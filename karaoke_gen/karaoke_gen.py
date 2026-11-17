@@ -68,6 +68,7 @@ class KaraokePrep:
         lyrics_artist=None,
         lyrics_title=None,
         lyrics_file=None,
+        lrc_file=None,
         skip_lyrics=False,
         skip_transcription=False,
         skip_transcription_review=False,
@@ -126,6 +127,7 @@ class KaraokePrep:
         self.lyrics_artist = lyrics_artist
         self.lyrics_title = lyrics_title
         self.lyrics_file = lyrics_file # Passed to LyricsProcessor
+        self.lrc_file = lrc_file # Line-timed LRC import
         self.skip_lyrics = skip_lyrics # Used in prep_single_track logic
         self.skip_transcription = skip_transcription # Passed to LyricsProcessor
         self.skip_transcription_review = skip_transcription_review # Passed to LyricsProcessor
@@ -199,6 +201,7 @@ class KaraokePrep:
              logger=self.logger,
              style_params_json=self.style_params_json,
              lyrics_file=self.lyrics_file,
+             lrc_file=self.lrc_file,
              skip_transcription=self.skip_transcription,
              skip_transcription_review=self.skip_transcription_review,
              render_video=self.render_video,
