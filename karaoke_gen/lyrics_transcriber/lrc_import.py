@@ -63,6 +63,7 @@ def load_lrc_segments(path: str) -> List[LyricsSegment]:
                 words=words,
                 start_time=timestamp,
                 end_time=next_timestamp,
+                source_timestamp=timestamp,
             )
         )
     return segments
