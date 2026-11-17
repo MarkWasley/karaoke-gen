@@ -61,8 +61,8 @@ class LyricsSegment:
     id: str  # New: Unique identifier for each segment
     text: str
     words: List[Word]
-    start_time: float
-    end_time: float
+    start_time: Optional[float]
+    end_time: Optional[float]
     singer: Optional[SingerId] = None
     # Translation of this line shown in smaller text beneath it (translated-lyrics videos)
     translation: Optional[str] = None
