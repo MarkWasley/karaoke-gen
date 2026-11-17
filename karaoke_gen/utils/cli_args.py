@@ -229,6 +229,10 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
         help="Optional: Path to a file containing lyrics to use instead of fetching from online. Example: --lyrics_file='/path/to/lyrics.txt'",
     )
     lyrics_group.add_argument(
+        "--lrc_file",
+        help="Optional: Import line-timed lyrics from an LRC file without AI transcription or automatic lyric matching. Word timing is completed in Human Review.",
+    )
+    lyrics_group.add_argument(
         "--subtitle_offset_ms",
         type=int,
         default=0,
