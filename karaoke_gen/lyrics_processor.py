@@ -417,7 +417,7 @@ class LyricsProcessor:
             generate_lrc=True,
             generate_cdg=False,  # CDG generation disabled (not currently supported)
             video_resolution="4k",
-            enable_review=not self.skip_transcription_review,  # Honor the caller's setting
+            enable_review=(not self.skip_transcription_review or bool(self.lrc_file)),  # LRC imports require Human Review for word timing
             subtitle_offset_ms=self.subtitle_offset_ms,
             add_countdown=False,  # Always defer - caller handles countdown after review
         )
