@@ -336,7 +336,7 @@ class LyricsProcessor:
 
         # Check transcription provider configuration if transcription is not being skipped
         # Do this AFTER checking for existing files, since existing files don't need transcription
-        if not self.skip_transcription:
+        if not self.skip_transcription and not self.lrc_file:
             provider_status = self._check_transcription_providers()
             
             if provider_status["configured"]:
