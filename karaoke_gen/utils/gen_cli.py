@@ -500,6 +500,7 @@ async def async_main():
             lyrics_artist=args.lyrics_artist or artist,
             lyrics_title=args.lyrics_title or title,
             lyrics_file=args.lyrics_file,
+            lrc_file=args.lrc_file,
             skip_lyrics=False,  # We want to process lyrics
             skip_transcription=False,  # We want to transcribe
             skip_transcription_review=args.skip_transcription_review,
@@ -851,6 +852,7 @@ async def async_main():
         lyrics_artist=args.lyrics_artist,
         lyrics_title=args.lyrics_title,
         lyrics_file=args.lyrics_file,
+        lrc_file=args.lrc_file,
         skip_lyrics=args.skip_lyrics,
         skip_transcription=args.skip_transcription,
         skip_transcription_review=True,  # Always defer review to interactive review flow
