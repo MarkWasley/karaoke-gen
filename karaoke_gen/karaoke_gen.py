@@ -128,7 +128,7 @@ class KaraokePrep:
         self.lyrics_title = lyrics_title
         self.lyrics_file = lyrics_file # Passed to LyricsProcessor
         self.lrc_file = lrc_file # Line-timed LRC import
-        self.skip_lyrics = skip_lyrics # Used in prep_single_track logic
+        self.skip_lyrics = skip_lyrics and not bool(lrc_file) # Explicit LRC input takes precedence over --skip-lyrics
         self.skip_transcription = skip_transcription # Passed to LyricsProcessor
         self.skip_transcription_review = skip_transcription_review # Passed to LyricsProcessor
         self.render_video = render_video # Passed to LyricsProcessor
