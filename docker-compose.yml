@@ -1,0 +1,25 @@
+services:
+  karaoke-gen:
+    build:
+      context: .
+      dockerfile: Dockerfile.lrc
+    image: markwasley/karaoke-gen:lrc
+    container_name: karaoke-gen
+    init: true
+    stdin_open: true
+    tty: true
+    ports:
+      - "${LYRICS_REVIEW_PORT:-8000}:8000"
+    environment:
+      TZ: Pacific/Auckland
+      LYRICS_REVIEW_HOST: 0.0.0.0
+      LYRICS_REVIEW_PORT: 8000
+      LYRICS_REVIEW_OPEN_BROWSER: "false"
+      # Set this to the URL your browser uses to reach the Docker host.
+      LYRICS_REVIEW_URL: ${LYRICS_REVIEW_URL:-http://localhost:8000/app/jobs/local/review}
+      LYRICS_TRANSCRIBER_CACHE_DIR: /cache/lyrics-transcriber
+    volumes:
+      - ./data:/data
+      - ./cache:/cache
+    working_dir: /data
+    restart: "no"
