@@ -11,6 +11,7 @@ google-auth-httplib2>=0.2
 thefuzz>=0.22
 mutagen>=1.47
 python-slugify>=8
+karaoke-lyrics-processor>=0.6
 tqdm>=4.67
 python-levenshtein>=0.26
 metaphone>=0.6
