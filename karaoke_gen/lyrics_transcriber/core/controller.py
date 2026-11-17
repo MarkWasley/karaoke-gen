@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import os
 import logging
 import json
 from dataclasses import dataclass, field
-from typing import Dict, Optional, List
+from typing import Any, Dict, Optional, List
 from karaoke_gen.lyrics_transcriber.types import LyricsData, TranscriptionResult, TranscriptionData, CorrectionResult
 from karaoke_gen.lyrics_transcriber.lrc_import import load_lrc_segments
 from karaoke_gen.lyrics_transcriber.transcribers.base_transcriber import BaseTranscriber
@@ -307,7 +309,7 @@ class LyricsTranscriber:
     def process(
         self,
         agentic_deadline: Optional[float] = None,
-        separated_audio_paths: Optional[Dict[str, any]] = None,
+        separated_audio_paths: Optional[Dict[str, Any]] = None,
     ) -> LyricsControllerResult:
         """Main processing method that orchestrates the entire workflow.
 
