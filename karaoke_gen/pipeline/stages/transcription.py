@@ -29,6 +29,7 @@ class TranscriptionStage(PipelineStage):
         self,
         style_params_json: Optional[str] = None,
         lyrics_file: Optional[str] = None,
+        lrc_file: Optional[str] = None,
         skip_transcription: bool = False,
         skip_transcription_review: bool = False,
         subtitle_offset_ms: int = 0,
@@ -51,6 +52,7 @@ class TranscriptionStage(PipelineStage):
         """
         self.style_params_json = style_params_json
         self.lyrics_file = lyrics_file
+        self.lrc_file = lrc_file
         self.skip_transcription = skip_transcription
         self.skip_transcription_review = skip_transcription_review
         self.subtitle_offset_ms = subtitle_offset_ms
@@ -99,7 +101,7 @@ class TranscriptionStage(PipelineStage):
             context.update_progress(self.name, 0, "Starting lyrics transcription")
             context.log("INFO", f"Transcribing lyrics for: {context.artist} - {context.title}")
             
-            if self.skip_transcription:
+            if self.skip_transcription and not self.lrc_file:
                 context.log("INFO", "Skipping transcription (skip_transcription=True)")
                 return StageResult(
                     status=StageStatus.SKIPPED,
@@ -125,6 +127,7 @@ class TranscriptionStage(PipelineStage):
                 logger=self.logger,
                 style_params_json=style_params_json,
                 lyrics_file=self.lyrics_file,
+                lrc_file=self.lrc_file,
                 skip_transcription=self.skip_transcription,
                 skip_transcription_review=self.skip_transcription_review,
                 render_video=False,  # Don't render video here
