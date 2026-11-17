@@ -66,6 +66,8 @@ class LyricsSegment:
     singer: Optional[SingerId] = None
     # Translation of this line shown in smaller text beneath it (translated-lyrics videos)
     translation: Optional[str] = None
+    # Original imported LRC line timestamp, retained if review edits segment timing.
+    source_timestamp: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert LyricsSegment to dictionary for JSON serialization."""
@@ -80,6 +82,8 @@ class LyricsSegment:
             d["singer"] = self.singer
         if self.translation is not None:
             d["translation"] = self.translation
+        if self.source_timestamp is not None:
+            d["source_timestamp"] = self.source_timestamp
         return d
 
     @classmethod
@@ -93,6 +97,7 @@ class LyricsSegment:
             end_time=data["end_time"],
             singer=data.get("singer"),
             translation=data.get("translation"),
+            source_timestamp=data.get("source_timestamp"),
         )
 
 
