@@ -1,9 +1,7 @@
 services:
   karaoke-gen:
-    build:
-      context: .
-      dockerfile: Dockerfile.lrc
-    image: markwasley/karaoke-gen:lrc
+    image: ghcr.io/markwasley/karaoke-gen:lrc
+    pull_policy: always
     container_name: karaoke-gen
     init: true
     stdin_open: true
