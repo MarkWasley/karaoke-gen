@@ -3,8 +3,6 @@
 # Ollama, LangChain and all cloud AI SDKs.
 requests>=2
 beautifulsoup4>=4
-flacfetch>=0.9.0
-lyricsgenius>=3
 pillow>=10.1
 google-api-python-client>=2
 google-auth>=2
@@ -13,8 +11,6 @@ google-auth-httplib2>=0.2
 thefuzz>=0.22
 mutagen>=1.47
 python-slugify>=8
-syrics>=0
-karaoke-lyrics-processor>=0.6
 tqdm>=4.67
 python-levenshtein>=0.26
 metaphone>=0.6
