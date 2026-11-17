@@ -6,18 +6,8 @@ from typing import Dict, Optional, List
 from karaoke_gen.lyrics_transcriber.types import LyricsData, TranscriptionResult, TranscriptionData, CorrectionResult
 from karaoke_gen.lyrics_transcriber.lrc_import import load_lrc_segments
 from karaoke_gen.lyrics_transcriber.transcribers.base_transcriber import BaseTranscriber
-from karaoke_gen.lyrics_transcriber.transcribers.audioshake import AudioShakeTranscriber, AudioShakeConfig
-from karaoke_gen.lyrics_transcriber.transcribers.whisper import WhisperTranscriber, WhisperConfig
-from karaoke_gen.lyrics_transcriber.transcribers.local_whisper import LocalWhisperTranscriber, LocalWhisperConfig
-from karaoke_gen.lyrics_transcriber.lyrics.base_lyrics_provider import BaseLyricsProvider, LyricsProviderConfig
-from karaoke_gen.lyrics_transcriber.lyrics.genius import GeniusProvider
-from karaoke_gen.lyrics_transcriber.lyrics.spotify import SpotifyProvider
-from karaoke_gen.lyrics_transcriber.lyrics.musixmatch import MusixmatchProvider
-from karaoke_gen.lyrics_transcriber.lyrics.lrclib import LRCLIBProvider
 from karaoke_gen.lyrics_transcriber.output.generator import OutputGenerator
-from karaoke_gen.lyrics_transcriber.correction.corrector import LyricsCorrector
 from karaoke_gen.lyrics_transcriber.core.config import TranscriberConfig, LyricsConfig, OutputConfig
-from karaoke_gen.lyrics_transcriber.lyrics.file_provider import FileProvider
 
 
 @dataclass
@@ -69,7 +59,7 @@ class LyricsTranscriber:
         lyrics_config: Optional[LyricsConfig] = None,
         output_config: Optional[OutputConfig] = None,
         transcribers: Optional[Dict[str, BaseTranscriber]] = None,
-        lyrics_providers: Optional[Dict[str, BaseLyricsProvider]] = None,
+        lyrics_providers: Optional[Dict[str, Any]] = None,
         corrector: Optional[LyricsCorrector] = None,
         output_generator: Optional[OutputGenerator] = None,
         logger: Optional[logging.Logger] = None,
@@ -135,6 +125,7 @@ class LyricsTranscriber:
         else:
             self.transcribers = transcribers or self._initialize_transcribers()
             self.lyrics_providers = lyrics_providers or self._initialize_lyrics_providers()
+            from karaoke_gen.lyrics_transcriber.correction.corrector import LyricsCorrector
             self.corrector = corrector or LyricsCorrector(cache_dir=self.output_config.cache_dir, logger=self.logger)
         self.output_generator = output_generator or self._initialize_output_generator()
 
@@ -186,6 +177,10 @@ class LyricsTranscriber:
 
     def _initialize_transcribers(self) -> Dict[str, BaseTranscriber]:
         """Initialize available transcription services."""
+        from karaoke_gen.lyrics_transcriber.transcribers.audioshake import AudioShakeTranscriber, AudioShakeConfig
+        from karaoke_gen.lyrics_transcriber.transcribers.whisper import WhisperTranscriber, WhisperConfig
+        from karaoke_gen.lyrics_transcriber.transcribers.local_whisper import LocalWhisperTranscriber, LocalWhisperConfig
+
         transcribers = {}
 
         # Add debug logging for config values
@@ -252,6 +247,13 @@ class LyricsTranscriber:
 
     def _initialize_lyrics_providers(self) -> Dict[str, BaseLyricsProvider]:
         """Initialize available lyrics providers."""
+        from karaoke_gen.lyrics_transcriber.lyrics.base_lyrics_provider import LyricsProviderConfig
+        from karaoke_gen.lyrics_transcriber.lyrics.genius import GeniusProvider
+        from karaoke_gen.lyrics_transcriber.lyrics.spotify import SpotifyProvider
+        from karaoke_gen.lyrics_transcriber.lyrics.musixmatch import MusixmatchProvider
+        from karaoke_gen.lyrics_transcriber.lyrics.lrclib import LRCLIBProvider
+        from karaoke_gen.lyrics_transcriber.lyrics.file_provider import FileProvider
+
         providers = {}
 
         # Get max_line_length from styles if available, otherwise use config default
