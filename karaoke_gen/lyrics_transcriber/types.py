@@ -13,8 +13,8 @@ class Word:
 
     id: str  # New: Unique identifier for each word
     text: str
-    start_time: float
-    end_time: float
+    start_time: Optional[float]
+    end_time: Optional[float]
     confidence: Optional[float] = None
     # New: Track if this word was created during correction
     created_during_correction: bool = False
