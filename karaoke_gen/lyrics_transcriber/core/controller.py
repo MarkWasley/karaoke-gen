@@ -125,10 +125,17 @@ class LyricsTranscriber:
         # Load styles early so lyrics providers can use them
         self._load_styles()
 
-        # Initialize components (with dependency injection)
-        self.transcribers = transcribers or self._initialize_transcribers()
-        self.lyrics_providers = lyrics_providers or self._initialize_lyrics_providers()
-        self.corrector = corrector or LyricsCorrector(cache_dir=self.output_config.cache_dir, logger=self.logger)
+        # LRC imports do not use transcription, online providers or automatic
+        # correction. Avoid initializing those components (including optional ML
+        # dependencies such as spaCy) for this workflow.
+        if self.lrc_file:
+            self.transcribers = {}
+            self.lyrics_providers = {}
+            self.corrector = None
+        else:
+            self.transcribers = transcribers or self._initialize_transcribers()
+            self.lyrics_providers = lyrics_providers or self._initialize_lyrics_providers()
+            self.corrector = corrector or LyricsCorrector(cache_dir=self.output_config.cache_dir, logger=self.logger)
         self.output_generator = output_generator or self._initialize_output_generator()
 
         # Log enabled features
