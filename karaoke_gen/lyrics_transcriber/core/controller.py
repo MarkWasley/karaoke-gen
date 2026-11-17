@@ -3,7 +3,8 @@ import logging
 import json
 from dataclasses import dataclass, field
 from typing import Dict, Optional, List
-from karaoke_gen.lyrics_transcriber.types import LyricsData, TranscriptionResult, CorrectionResult
+from karaoke_gen.lyrics_transcriber.types import LyricsData, TranscriptionResult, TranscriptionData, CorrectionResult
+from karaoke_gen.lyrics_transcriber.lrc_import import load_lrc_segments
 from karaoke_gen.lyrics_transcriber.transcribers.base_transcriber import BaseTranscriber
 from karaoke_gen.lyrics_transcriber.transcribers.audioshake import AudioShakeTranscriber, AudioShakeConfig
 from karaoke_gen.lyrics_transcriber.transcribers.whisper import WhisperTranscriber, WhisperConfig
@@ -72,6 +73,7 @@ class LyricsTranscriber:
         corrector: Optional[LyricsCorrector] = None,
         output_generator: Optional[OutputGenerator] = None,
         logger: Optional[logging.Logger] = None,
+        lrc_file: Optional[str] = None,
         log_level: int = logging.DEBUG,
         log_formatter: Optional[logging.Formatter] = None,
     ):
@@ -104,6 +106,7 @@ class LyricsTranscriber:
 
         # Basic settings with sanitized filenames
         self.audio_filepath = audio_filepath
+        self.lrc_file = lrc_file
         self.artist = artist
         self.title = title
         self.output_prefix = self._create_sanitized_output_prefix(artist, title)
@@ -343,6 +346,47 @@ class LyricsTranscriber:
         # Log all env vars if in debug mode
         if self.logger.getEffectiveLevel() <= logging.DEBUG:
             self.logger.debug(f"All environment variables: {env_vars}")
+
+        # An explicitly supplied LRC is authoritative: bypass correction caches,
+        # online lyric providers and all automatic transcription/correction.
+        if self.lrc_file:
+            self.logger.info(f"Importing line-timed lyrics from {self.lrc_file}")
+            segments = load_lrc_segments(self.lrc_file)
+            transcription = TranscriptionData(
+                segments=segments,
+                words=[word for segment in segments for word in segment.words],
+                text="\n".join(segment.text for segment in segments),
+                source="lrc_import",
+                metadata={"source_file": os.path.abspath(self.lrc_file), "timing_level": "line"},
+            )
+            self.results.transcription_results = [
+                TranscriptionResult(name="lrc_import", priority=0, result=transcription)
+            ]
+            self.results.transcription_corrected = CorrectionResult(
+                original_segments=segments,
+                corrected_segments=segments,
+                corrections=[],
+                corrections_made=0,
+                confidence=1.0,
+                reference_lyrics={},
+                anchor_sequences=[],
+                gap_sequences=[],
+                resized_segments=[],
+                metadata={
+                    "correction_type": "none",
+                    "reason": "lrc_import",
+                    "source_file": os.path.abspath(self.lrc_file),
+                    "timing_level": "line",
+                },
+                correction_steps=[],
+                word_id_map={},
+                segment_id_map={},
+            )
+            if self.output_config.enable_review:
+                self._run_review()
+            self.generate_outputs()
+            self.logger.info("LRC import and Human Review completed")
+            return self.results
 
         # Check for existing corrections JSON
         corrections_json_path = os.path.join(self.output_config.output_dir, f"{self.output_prefix} (Lyrics Corrections).json")
