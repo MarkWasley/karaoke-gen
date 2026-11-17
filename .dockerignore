@@ -6,9 +6,11 @@
 .gitignore
 .gitmodules
 
-# Node.js / Frontend (not needed for backend image)
+# Node.js dependencies and generated build output (frontend source is needed by Dockerfile.lrc)
 node_modules/
-frontend/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
 frontend-react/
 *.log
 npm-debug.log*
