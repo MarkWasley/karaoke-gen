@@ -4,15 +4,15 @@ This image is intended for tracks where audio separation has already been done a
 
 It deliberately does **not** install PyTorch, audio-separator, Demucs, Whisper, transformers, spaCy, Ollama or the LangChain/LLM integrations. The container handles the LRC import, Human Review, and the normal non-AI output steps.
 
-## Build
+## Get the image
 
 From the repository root:
 
 ```bash
-docker compose build
+docker compose pull
 ```
 
-The image builds the Next.js Human Review UI as a separate Node build stage, then copies the static files into a Python runtime image. Node and npm are not present in the final image.
+The image is published as `ghcr.io/markwasley/karaoke-gen:lrc`. GitHub Actions builds the Next.js Human Review UI in a separate Node stage, then copies the static files into a Python runtime image. Node and npm are not present in the final image.
 
 ## Prepare files
 
@@ -55,4 +55,9 @@ The browser must be able to reach the Docker host on the configured port.
 - `./cache` is mounted at `/cache`; review sessions and processing cache persist on the host.
 - The review server listens on container port 8000. Change the host-side port with `LYRICS_REVIEW_PORT`.
 
-The first build downloads the Node and Python dependencies and builds the frontend. Subsequent builds use Docker's layer cache.
+The GitHub Actions workflow builds the image and publishes it to GitHub Container Registry (GHCR) whenever the LRC container files or application source change on this branch. Once the first image has been published, Compose pulls it automatically. The first publication may take several minutes.
+
+
+## GHCR package visibility
+
+The first time GitHub Actions publishes the image, GitHub Container Registry may create the package as private. To pull it without logging in, open the repository's **Packages** section, open `karaoke-gen`, then **Package settings → Change visibility → Public**. After that, the Compose file can pull the image without registry credentials.
