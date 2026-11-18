@@ -30,9 +30,15 @@ def get_nextjs_assets_dir() -> Optional[Path]:
         Path to the frontend/out directory containing the Next.js static export,
         or None if the assets are not available.
     """
-    # Check packaged location first
+    # Check the packaged wheel location first.
     if _PACKAGED_DIR.exists() and (_PACKAGED_DIR / "index.html").exists():
         return _PACKAGED_DIR
+
+    # Some repository revisions commit the static export directly in this
+    # package directory (rather than under out/). This is also the layout used
+    # by the lightweight LRC Docker image.
+    if (_MODULE_DIR / "index.html").exists():
+        return _MODULE_DIR
 
     # Check development location
     if _DEV_DIR.exists() and (_DEV_DIR / "index.html").exists():

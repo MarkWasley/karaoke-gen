@@ -706,3 +706,84 @@ MIT
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) — the whole
 backend runs locally against emulators with no Google Cloud credentials or
 paid API keys required.
+
+## Docker image, LRC import and manual timing (no AI)
+
+A small Docker image is published to GitHub Container Registry for the LRC workflow. It deliberately excludes AI transcription, Whisper, audio-separation models, Torch, transformers and LLM providers. It expects the source audio, line-timed LRC and separated instrumental to be supplied by you.
+
+The container runs the local lyrics review UI and generates CDG output. It does not perform audio separation or automatic transcription.
+
+### Start with Docker Compose
+
+Put these files in a `work` folder beside the compose file:
+
+- `song.flac` — full mix or vocals audio used while setting word timings
+- `lyrics.lrc` — line-timed LRC file
+- `instrumental.flac` — already-separated instrumental
+- `vocals.flac` — optional vocals stem for the waveform display
+
+Create a `.env` file beside the compose file to set the song details. For example:
+
+```dotenv
+LYRICS_REVIEW_HOST_PORT=3200
+KARAOKE_WORKDIR=./work
+LRC_FILE=/work/lyrics.lrc
+INSTRUMENTAL_FILE=/work/instrumental.flac
+VOCALS_FILE=/work/vocals.flac
+AUDIO_FILE=/work/song.flac
+ARTIST=Artist
+TITLE=Title
+```
+
+Omit `VOCALS_FILE` or leave it blank if you do not have a separate vocals stem. The defaults above match the filenames in the `work` folder; change the artist and title values to suit the song.
+
+Start the service in the background:
+
+```powershell
+docker compose -f docker-compose.lrc.yml up -d
+```
+
+Open the review page at:
+
+```
+http://localhost:3200/app/jobs/local/review
+```
+
+View the container output with:
+
+```powershell
+docker compose -f docker-compose.lrc.yml logs -f
+```
+
+The container runs one song at a time. It exits after you submit the manual word-timing review and CDG/MP3 output has been generated in the mounted `work` directory. To review another song, update the `.env` values and run:
+
+```powershell
+docker compose -f docker-compose.lrc.yml up -d --force-recreate
+```
+
+The Compose file pulls the published GHCR image automatically. It uses the feature-branch tag by default and checks for an updated image whenever you run `up`.
+
+### Pull the published image
+
+The GitHub Actions workflow publishes:
+
+- Feature branch: `ghcr.io/markwasley/karaoke-gen-lrc:feature-ghcr-lrc-no-ai`
+- Default branch: `ghcr.io/markwasley/karaoke-gen-lrc:latest`
+
+The Compose file uses the feature-branch tag by default. Once the changes are merged into the default branch, you can switch Compose to the `latest` tag in PowerShell:
+
+```powershell
+$env:KARAOKE_IMAGE_TAG = "latest"
+```
+
+
+Pull it with:
+
+```powershell
+docker pull ghcr.io/markwasley/karaoke-gen-lrc:feature-ghcr-lrc-no-ai
+```
+
+The package may initially be private in GHCR. To pull a private package, first run `docker login ghcr.io -u YOUR_GITHUB_USERNAME` and use a GitHub personal access token with `read:packages`. You can make the package public in GitHub, under your profile's Packages section, after the first successful publish.
+
+The image requires the LRC and `--existing_instrumental` arguments and keeps human review enabled. It does not support transcription, automatic lyric matching, AI correction or audio separation.
+

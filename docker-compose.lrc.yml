@@ -1,0 +1,25 @@
+services:
+  karaoke-gen-lrc:
+    container_name: karaoke-gen
+    image: ghcr.io/markwasley/karaoke-gen-lrc:${KARAOKE_IMAGE_TAG:-feature-ghcr-lrc-no-ai}
+    pull_policy: always
+    ports:
+      - "${LYRICS_REVIEW_HOST_PORT:-3200}:8000"
+    volumes:
+      - "${KARAOKE_WORKDIR:-./work}:/work"
+    working_dir: /work
+    environment:
+      USE_AGENTIC_AI: "0"
+      LYRICS_REVIEW_HOST: "0.0.0.0"
+      LYRICS_REVIEW_PORT: "8000"
+      LYRICS_REVIEW_OPEN_BROWSER: "0"
+      LYRICS_REVIEW_PUBLIC_URL: "http://localhost:${LYRICS_REVIEW_HOST_PORT:-3200}"
+      LRC_FILE: "${LRC_FILE:-/work/lyrics.lrc}"
+      INSTRUMENTAL_FILE: "${INSTRUMENTAL_FILE:-/work/instrumental.flac}"
+      VOCALS_FILE: "${VOCALS_FILE:-}"
+      AUDIO_FILE: "${AUDIO_FILE:-/work/song.flac}"
+      ARTIST: "${ARTIST:-Artist}"
+      TITLE: "${TITLE:-Title}"
+    init: true
+    stdin_open: true
+    tty: true

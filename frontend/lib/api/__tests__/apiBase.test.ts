@@ -6,14 +6,14 @@
 
 const PROD = 'https://api.nomadkaraoke.com'
 
-function setHostname(hostname: string, search = '') {
+function setHostname(hostname: string, search = '', pathname = '/', port = '') {
   delete (window as unknown as { location?: Location }).location
-  Object.defineProperty(window, 'location', { value: { hostname, search, href: `http://${hostname}/${search}`, pathname: '/' } as Location, configurable: true, writable: true })
+  Object.defineProperty(window, 'location', { value: { hostname, search, port, href: `http://${hostname}${port ? `:${port}` : ''}${pathname}${search}`, pathname } as Location, configurable: true, writable: true })
 }
 
-async function capturePostedUrl(hostname: string, client: 'autoCorrect' | 'customLyrics', search = ''): Promise<string> {
+async function capturePostedUrl(hostname: string, client: 'autoCorrect' | 'customLyrics', search = '', pathname = '/', port = ''): Promise<string> {
   const original = window.location
-  setHostname(hostname, search)
+  setHostname(hostname, search, pathname, port)
   let url = ''
   const originalFetch = global.fetch
   global.fetch = jest.fn(async (u: RequestInfo) => {
@@ -68,6 +68,18 @@ describe.each(['autoCorrect', 'customLyrics'] as const)('%s API base', (client) 
       expect(url).toMatch(/^\/api\/review\/job-1\//)
     },
   )
+
+  it('uses the same-origin local API for an explicitly enabled LAN review URL', async () => {
+    const url = await capturePostedUrl(
+      'wh01.markwasley.net.nz',
+      client,
+      '?local=1',
+      '/app/jobs/local/review',
+      '3200',
+    )
+    expect(url).toMatch(/^\/api\/review\/job-1\//)
+    expect(url).not.toContain(PROD)
+  })
 
   it('uses the production API on the production host', async () => {
     const url = await capturePostedUrl('gen.nomadkaraoke.com', client)
