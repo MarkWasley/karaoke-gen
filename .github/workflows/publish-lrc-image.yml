@@ -1,0 +1,64 @@
+name: Build and publish no-AI LRC Docker image
+
+on:
+  push:
+    branches:
+      - main
+      - feature/ghcr-lrc-no-ai
+    paths:
+      - "Dockerfile.lrc"
+      - "requirements-lrc.txt"
+      - "docker/**"
+      - "docker-compose.lrc.yml"
+      - "karaoke_gen/**"
+      - "pyproject.toml"
+      - ".github/workflows/publish-lrc-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-lrc-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    name: Build and push GHCR image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/markwasley/karaoke-gen-lrc
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and publish
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.lrc
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=karaoke-gen-lrc
+          cache-to: type=gha,mode=max,scope=karaoke-gen-lrc
