@@ -1,0 +1,20 @@
+services:
+  karaoke-gen-lrc:
+    image: ghcr.io/markwasley/karaoke-gen-lrc:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.lrc
+    ports:
+      - "${LYRICS_REVIEW_HOST_PORT:-8000}:8000"
+    volumes:
+      - "${KARAOKE_WORKDIR:-./work}:/work"
+    working_dir: /work
+    environment:
+      USE_AGENTIC_AI: "0"
+      LYRICS_REVIEW_HOST: "0.0.0.0"
+      LYRICS_REVIEW_PORT: "8000"
+      LYRICS_REVIEW_OPEN_BROWSER: "0"
+      LYRICS_REVIEW_PUBLIC_URL: "http://localhost:${LYRICS_REVIEW_HOST_PORT:-8000}"
+    init: true
+    stdin_open: true
+    tty: true
