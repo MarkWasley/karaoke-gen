@@ -706,3 +706,68 @@ MIT
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) — the whole
 backend runs locally against emulators with no Google Cloud credentials or
 paid API keys required.
+
+## Docker image, LRC import and manual timing (no AI)
+
+A small Docker image is published to GitHub Container Registry for the LRC workflow. It deliberately excludes AI transcription, Whisper, audio-separation models, Torch, transformers and LLM providers. It expects the source audio, line-timed LRC and separated instrumental to be supplied by you.
+
+The container runs the local lyrics review UI and generates CDG output. It does not perform audio separation or automatic transcription.
+
+### Start with Docker Compose
+
+Put these files in a `work` folder beside the compose file:
+
+- `song.flac` — full mix or vocals audio used while setting word timings
+- `lyrics.lrc` — line-timed LRC file
+- `instrumental.flac` — already-separated instrumental
+- `vocals.flac` — optional vocals stem for the waveform display
+
+Build locally (or use the published image):
+
+```powershell
+docker compose -f docker-compose.lrc.yml build
+```
+
+Run the timing workflow:
+
+```powershell
+docker compose -f docker-compose.lrc.yml run --rm --service-ports karaoke-gen-lrc `
+  --lrc_file /work/lyrics.lrc `
+  --existing_instrumental /work/instrumental.flac `
+  --existing_vocals /work/vocals.flac `
+  /work/song.flac "Artist" "Title"
+```
+
+The vocals argument is optional. The command adds `--no-video --enable_cdg` automatically. The review server is available at:
+
+```
+http://localhost:8000/app/jobs/local/review
+```
+
+Keep the terminal running while you edit the word timings and submit the review. The CDG/MP3 package is generated after review and saved under the mounted `work` directory.
+
+If port 8000 is already in use, set a different host port before starting Compose:
+
+```powershell
+$env:LYRICS_REVIEW_HOST_PORT = "8767"
+```
+
+Then open `http://localhost:8767/app/jobs/local/review`.
+
+### Pull the published image
+
+The GitHub Actions workflow publishes:
+
+- Feature branch: `ghcr.io/markwasley/karaoke-gen-lrc:feature-ghcr-lrc-no-ai`
+- Default branch: `ghcr.io/markwasley/karaoke-gen-lrc:latest`
+
+Pull it with:
+
+```powershell
+docker pull ghcr.io/markwasley/karaoke-gen-lrc:feature-ghcr-lrc-no-ai
+```
+
+The package may initially be private in GHCR. To pull a private package, first run `docker login ghcr.io -u YOUR_GITHUB_USERNAME` and use a GitHub personal access token with `read:packages`. You can make the package public in GitHub, under your profile's Packages section, after the first successful publish.
+
+The image requires the LRC and `--existing_instrumental` arguments and keeps human review enabled. It does not support transcription, automatic lyric matching, AI correction or audio separation.
+
