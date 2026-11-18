@@ -1,6 +1,20 @@
 #!/bin/sh
 set -eu
 
+# With no command-line arguments (the normal "docker compose up -d" path),
+# build a single-song job from the service environment. Explicit CLI arguments
+# still take precedence when the container is started with "docker compose run".
+if [ "$#" -eq 0 ]; then
+    set -- --lrc_file "${LRC_FILE:-/work/lyrics.lrc}" \
+        --existing_instrumental "${INSTRUMENTAL_FILE:-/work/instrumental.flac}"
+
+    if [ -n "${VOCALS_FILE:-}" ]; then
+        set -- "$@" --existing_vocals "$VOCALS_FILE"
+    fi
+
+    set -- "$@" "${AUDIO_FILE:-/work/song.flac}" "${ARTIST:-Artist}" "${TITLE:-Title}"
+fi
+
 has_lrc=0
 has_instrumental=0
 
