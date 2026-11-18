@@ -48,6 +48,11 @@ import importlib.util
 from karaoke_gen.utils.gen_cli import validate_lrc_mode_args
 from karaoke_gen.lyrics_transcriber.review.server import ReviewServer
 from karaoke_gen.lyrics_transcriber.output.cdg import CDGGenerator
+from karaoke_gen.nextjs_frontend import get_nextjs_assets_dir
+
+assets = get_nextjs_assets_dir()
+if assets is None or not (assets / "index.html").is_file():
+    raise SystemExit("The packaged local review frontend is missing.")
 
 for module in (
     "torch",
