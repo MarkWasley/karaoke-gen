@@ -53,6 +53,9 @@ from karaoke_gen.nextjs_frontend import get_nextjs_assets_dir
 assets = get_nextjs_assets_dir()
 if assets is None or not (assets / "index.html").is_file():
     raise SystemExit("The packaged local review frontend is missing.")
+review_page = assets / "app" / "jobs" / "local" / "review" / "index.html"
+if not review_page.is_file():
+    raise SystemExit(f"The packaged local review page is missing: {review_page}")
 
 for module in (
     "torch",
