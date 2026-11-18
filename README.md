@@ -722,43 +722,46 @@ Put these files in a `work` folder beside the compose file:
 - `instrumental.flac` — already-separated instrumental
 - `vocals.flac` — optional vocals stem for the waveform display
 
-Pull the published image from GHCR:
+Create a `.env` file beside the compose file to set the song details. For example:
+
+```dotenv
+LYRICS_REVIEW_HOST_PORT=3200
+KARAOKE_WORKDIR=./work
+LRC_FILE=/work/lyrics.lrc
+INSTRUMENTAL_FILE=/work/instrumental.flac
+VOCALS_FILE=/work/vocals.flac
+AUDIO_FILE=/work/song.flac
+ARTIST=Artist
+TITLE=Title
+```
+
+Omit `VOCALS_FILE` or leave it blank if you do not have a separate vocals stem. The defaults above match the filenames in the `work` folder; change the artist and title values to suit the song.
+
+Start the service in the background:
 
 ```powershell
-docker compose -f docker-compose.lrc.yml pull
+docker compose -f docker-compose.lrc.yml up -d
 ```
 
-To build it locally from the source instead, run:
+Open the review page at:
+
+```
+http://localhost:3200/app/jobs/local/review
+```
+
+View the container output with:
 
 ```powershell
-docker compose -f docker-compose.lrc.yml build
+docker compose -f docker-compose.lrc.yml logs -f
 ```
 
-Run the timing workflow:
+The container runs one song at a time. It exits after you submit the manual word-timing review and CDG/MP3 output has been generated in the mounted `work` directory. To review another song, update the `.env` values and run:
 
 ```powershell
-docker compose -f docker-compose.lrc.yml run --rm --service-ports karaoke-gen-lrc `
-  --lrc_file /work/lyrics.lrc `
-  --existing_instrumental /work/instrumental.flac `
-  --existing_vocals /work/vocals.flac `
-  /work/song.flac "Artist" "Title"
+docker compose -f docker-compose.lrc.yml up -d --force-recreate
 ```
 
-The vocals argument is optional. The command adds `--no-video --enable_cdg` automatically. The review server is available at:
-
-```
-http://localhost:8000/app/jobs/local/review
-```
-
-Keep the terminal running while you edit the word timings and submit the review. The CDG/MP3 package is generated after review and saved under the mounted `work` directory.
-
-If port 8000 is already in use, set a different host port before starting Compose:
-
-```powershell
-$env:LYRICS_REVIEW_HOST_PORT = "8767"
-```
-
-Then open `http://localhost:8767/app/jobs/local/review`.
+The Compose file pulls the published GHCR image automatically. It uses the feature-branch tag by default and checks for an updated image whenever you run `up`.
 
 ### Pull the published image
 
