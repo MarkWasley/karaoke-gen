@@ -64,10 +64,12 @@ class KaraokePrep:
         other_stems_models=["htdemucs_6s.yaml"],
         model_file_dir=os.path.join(tempfile.gettempdir(), "audio-separator-models"),
         existing_instrumental=None,
+        existing_vocals=None,
         # Lyrics Configuration
         lyrics_artist=None,
         lyrics_title=None,
         lyrics_file=None,
+        lrc_file=None,
         skip_lyrics=False,
         skip_transcription=False,
         skip_transcription_review=False,
@@ -134,7 +136,29 @@ class KaraokePrep:
 
         # Audio Config - Keep needed ones
         self.existing_instrumental = existing_instrumental # Used in prep_single_track logic
+        self.existing_vocals = existing_vocals # Optional vocals stem for the review waveform (with existing_instrumental)
         self.skip_separation = skip_separation # Used in prep_single_track logic
+
+        # LRC import mode: user-supplied line-timed LRC replaces fetching/transcription/correction,
+        # and the audio is assumed to be already separated. Fail fast on inconsistent inputs.
+        self.lrc_file = lrc_file
+        if self.lrc_file:
+            if not os.path.isfile(self.lrc_file):
+                raise FileNotFoundError(f"LRC file not found: {self.lrc_file}")
+            if self.skip_lyrics:
+                raise ValueError("lrc_file cannot be combined with skip_lyrics")
+            if self.lyrics_file:
+                raise ValueError("lrc_file cannot be combined with lyrics_file (use one or the other)")
+            if not self.existing_instrumental:
+                raise ValueError(
+                    "lrc_file requires existing_instrumental: audio separation is not run in LRC import mode, "
+                    "so the already-separated instrumental must be supplied"
+                )
+        if self.existing_vocals:
+            if not self.existing_instrumental:
+                raise ValueError("existing_vocals requires existing_instrumental")
+            if not os.path.isfile(self.existing_vocals):
+                raise FileNotFoundError(f"Vocals file not found: {self.existing_vocals}")
         self.model_file_dir = model_file_dir # Passed to AudioProcessor
 
         # Style Config - Keep needed ones
@@ -572,7 +596,19 @@ class KaraokePrep:
 
                 self.logger.info("=== Starting Parallel Processing ===")
 
-                if not self.skip_lyrics:
+                if self.lrc_file:
+                    self.logger.info(f"Importing line-timed lyrics from LRC (no transcription, no AI matching): {self.lrc_file}")
+                    transcription_future = asyncio.create_task(
+                        asyncio.to_thread(
+                            self.lyrics_processor.import_lrc_lyrics,
+                            processed_track["input_audio_wav"],
+                            self.artist,
+                            self.title,
+                            track_output_dir,
+                            self.lrc_file,
+                        )
+                    )
+                elif not self.skip_lyrics:
                     self.logger.info("Creating transcription future...")
                     # Run transcription in a separate thread
                     transcription_future = asyncio.create_task(
@@ -948,9 +984,18 @@ class KaraokePrep:
                 if not self.file_handler._file_exists(instrumental_path):
                     shutil.copy2(self.existing_instrumental, instrumental_path)
 
+                # Optional pre-separated vocals stem: only used for the review UI waveform, so it is
+                # never countdown-padded (review shows the audio before any padding is applied).
+                vocals_path = None
+                if self.existing_vocals:
+                    vocals_extension = os.path.splitext(self.existing_vocals)[1]
+                    vocals_path = os.path.join(track_output_dir, f"{artist_title} (Vocals Custom){vocals_extension}")
+                    if not self.file_handler._file_exists(vocals_path):
+                        shutil.copy2(self.existing_vocals, vocals_path)
+
                 processed_track["separated_audio"]["Custom"] = {
                     "instrumental": instrumental_path,
-                    "vocals": None,
+                    "vocals": vocals_path,
                 }
                 
                 # If countdown padding was added to vocals, pad the custom instrumental too

@@ -6,6 +6,9 @@ import json
 from typing import Optional
 from karaoke_gen.lyrics_transcriber import LyricsTranscriber, OutputConfig, TranscriberConfig, LyricsConfig
 from karaoke_gen.lyrics_transcriber.core.controller import LyricsControllerResult
+from karaoke_gen.lyrics_transcriber.lyrics import lrc_import
+from karaoke_gen.lyrics_transcriber.output.generator import OutputGenerator
+from karaoke_gen.lyrics_transcriber.types import CorrectionResult
 from dotenv import load_dotenv
 from .utils import sanitize_filename
 
@@ -496,3 +499,109 @@ class LyricsProcessor:
                     self.logger.info(f"  {key}: {value}")
 
         return transcriber_outputs
+
+    def import_lrc_lyrics(self, input_audio_wav, artist, title, track_output_dir, lrc_file):
+        """
+        Use a user-supplied, line-timed LRC file as the lyrics, instead of transcribing.
+
+        No lyrics are fetched, no transcription provider is called and no correction or
+        anchor/gap matching runs. Line start times come from the LRC file; word timings are an
+        estimate for the human review step to refine. The outputs (corrections JSON, plain text,
+        LRC) are the same files ``transcribe_lyrics`` produces, and the return value has the same
+        shape, so everything downstream (review, countdown, rendering, finalisation) is unchanged.
+
+        Args:
+            input_audio_wav: Audio the reviewer will hear (used for its duration and in metadata)
+            artist: Artist, used for output filenames
+            title: Title, used for output filenames
+            track_output_dir: Track output directory
+            lrc_file: Path to the line-timed LRC file
+
+        Raises:
+            lrc_import.LrcImportError: if the file is missing, unreadable or has no lyric lines
+        """
+        if not lrc_file or not os.path.isfile(lrc_file):
+            raise lrc_import.LrcImportError(f"LRC file not found: {lrc_file}")
+
+        sanitized_artist = sanitize_filename(artist)
+        sanitized_title = sanitize_filename(title)
+        output_prefix = f"{sanitized_artist} - {sanitized_title}"
+        parent_lrc_path = os.path.join(track_output_dir, f"{output_prefix} (Karaoke).lrc")
+        lyrics_dir = os.path.join(track_output_dir, "lyrics")
+        corrections_filepath = os.path.join(lyrics_dir, f"{output_prefix} (Lyrics Corrections).json")
+        os.makedirs(lyrics_dir, exist_ok=True)
+
+        self.logger.info(f"Importing line-timed lyrics from LRC file (no transcription, no AI matching): {lrc_file}")
+
+        if os.path.exists(corrections_filepath):
+            # Never overwrite a previous import: it may already contain the human's word-timing work.
+            self.logger.info(
+                f"Found existing corrections JSON, reusing it instead of re-importing: {corrections_filepath} "
+                f"(delete it to import {os.path.basename(lrc_file)} again)"
+            )
+            with open(corrections_filepath, "r", encoding="utf-8") as f:
+                correction_result = CorrectionResult.from_dict(json.load(f))
+        else:
+            audio_duration = self._get_audio_duration(input_audio_wav)
+            correction_result = lrc_import.import_lrc_file(
+                lrc_file,
+                artist=artist,
+                title=title,
+                audio_filepath=input_audio_wav,
+                audio_duration=audio_duration,
+                logger=self.logger,
+            )
+            # Keep a copy of the source next to the outputs. Named so it can't collide with the
+            # "(Karaoke).lrc" file we generate below.
+            shutil.copy2(lrc_file, os.path.join(lyrics_dir, f"{output_prefix} (Source LRC).lrc"))
+
+        # Video rendering and countdown are deferred to after review, exactly as in transcribe_lyrics.
+        output_config = OutputConfig(
+            output_styles_json=self.style_params_json,
+            output_dir=lyrics_dir,
+            cache_dir=os.path.join(track_output_dir, "cache"),
+            fetch_lyrics=False,
+            run_transcription=False,
+            run_correction=False,
+            enable_review=False,
+            render_video=False,
+            generate_cdg=False,
+            generate_plain_text=True,
+            generate_lrc=True,
+            add_countdown=False,
+            video_resolution="4k",
+            subtitle_offset_ms=self.subtitle_offset_ms,
+        )
+        outputs = OutputGenerator(output_config, self.logger).generate_outputs(
+            transcription_corrected=correction_result,
+            lyrics_results={},
+            output_prefix=output_prefix,
+            audio_filepath=input_audio_wav,
+            artist=artist,
+            title=title,
+        )
+
+        shutil.copy2(outputs.lrc, parent_lrc_path)
+
+        return {
+            "lrc_filepath": parent_lrc_path,
+            "corrected_lyrics_text": "\n".join(segment.text for segment in correction_result.corrected_segments),
+            "corrected_lyrics_text_filepath": outputs.corrected_txt,
+            "lyrics_dir": lyrics_dir,
+            # Countdown (if the song starts too fast) is decided after review, like the normal flow.
+            "countdown_padding_added": False,
+            "countdown_padding_seconds": 0.0,
+            "padded_audio_filepath": None,
+        }
+
+    def _get_audio_duration(self, audio_filepath):
+        """Best-effort audio duration in seconds (None if unknown). Only used to sanity-check LRC times."""
+        try:
+            import mutagen
+
+            info = mutagen.File(audio_filepath)
+            if info is not None and info.info is not None:
+                return float(info.info.length)
+        except Exception as e:
+            self.logger.debug(f"Could not determine audio duration for {audio_filepath}: {e}")
+        return None

@@ -8,7 +8,7 @@ import time
 import os
 import urllib.parse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 import hashlib
 from karaoke_gen.lyrics_transcriber.core.config import OutputConfig
 import uvicorn
@@ -84,6 +84,7 @@ class ReviewServer:
         clean_instrumental_path: Optional[str] = None,
         with_backing_path: Optional[str] = None,
         backing_vocals_path: Optional[str] = None,
+        lyrics_only: bool = False,
     ):
         """Initialize the review server.
 
@@ -99,6 +100,8 @@ class ReviewServer:
             clean_instrumental_path: Path to clean instrumental audio file
             with_backing_path: Path to instrumental with backing vocals
             backing_vocals_path: Path to backing vocals audio file
+            lyrics_only: Complete the review as soon as lyrics are submitted, skipping the instrumental
+                review step (used when the instrumental is already chosen, e.g. LRC import mode)
         """
         self.correction_result = correction_result
         self.output_config = output_config
@@ -106,6 +109,7 @@ class ReviewServer:
         self.vocals_filepath = vocals_filepath
         self.logger = logger or logging.getLogger(__name__)
         self.review_completed = False
+        self.lyrics_only = lyrics_only
         self.corrections_saved = False  # Flag for intermediate save (before instrumental review)
         self.pending_corrections: Optional[Dict[str, Any]] = None  # Store corrections until final submission
 
@@ -288,6 +292,21 @@ class ReviewServer:
             if locale not in self._locales:
                 raise HTTPException(status_code=404, detail="Unknown locale")
             return self._render_local_review_html(locale)
+
+        # Lyrics-only review: the frontend always redirects to the instrumental review page after lyrics are
+        # saved. There is nothing to review there (the instrumental is already chosen), so show a "done" page
+        # instead. Must be registered before the /app/jobs/* catch-all routes below.
+        if self.lyrics_only:
+
+            @self.app.get("/app/jobs/local/instrumental")
+            async def serve_lyrics_only_done():
+                return HTMLResponse(self._LYRICS_ONLY_DONE_HTML)
+
+            @self.app.get("/{locale}/app/jobs/local/instrumental")
+            async def serve_lyrics_only_done_localized(locale: str):
+                if locale not in self._locales:
+                    raise HTTPException(status_code=404, detail="Unknown locale")
+                return HTMLResponse(self._LYRICS_ONLY_DONE_HTML)
 
         # Job routes - serve the jobs page HTML for client-side routing
         @self.app.get("/app/jobs/{path:path}")
@@ -955,6 +974,20 @@ class ReviewServer:
         """Update a CorrectionResult with new correction data."""
         return CorrectionOperations.update_correction_result_with_data(base_result, updated_data)
 
+    LYRICS_ONLY_SHUTDOWN_GRACE_SECONDS = 3.0
+
+    # Shown after lyrics are saved in lyrics-only mode (see __init__)
+    _LYRICS_ONLY_DONE_HTML = (
+        "<!doctype html><html><head><meta charset='utf-8'><title>Lyrics saved</title>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;"
+        "min-height:100vh;margin:0;background:#111;color:#eee;text-align:center}"
+        "div{max-width:30rem;padding:2rem}h1{font-size:1.4rem}p{color:#aaa}</style></head>"
+        "<body><div><h1>Lyrics saved</h1>"
+        "<p>Your word timings have been saved and karaoke-gen is carrying on in the terminal. "
+        "You can close this tab.</p></div></body></html>"
+    )
+
     async def submit_corrections(self, request_body: Dict[str, Any] = Body(...)):
         """Submit corrections without completing the review (intermediate save).
 
@@ -981,6 +1014,11 @@ class ReviewServer:
             # We'll apply them when complete_review is called with the instrumental selection
             self.pending_corrections = corrections_data
             self.corrections_saved = True  # Flag to indicate corrections are ready
+
+            if self.lyrics_only:
+                # No instrumental review follows, so this submission is the final one.
+                self.logger.info("Lyrics-only review: completing review on lyrics submission")
+                await self.complete_review({})
 
             return {"status": "success", "message": "Corrections saved"}
         except Exception as e:
@@ -1394,6 +1432,11 @@ class ReviewServer:
 
             while not self.review_completed:
                 time.sleep(0.1)
+
+            if self.lyrics_only:
+                # Keep serving briefly so the browser's redirect after saving lands on the "done" page
+                # rather than a connection error.
+                time.sleep(self.LYRICS_ONLY_SHUTDOWN_GRACE_SECONDS)
 
             return self.correction_result
 

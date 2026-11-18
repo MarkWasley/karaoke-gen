@@ -204,6 +204,11 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
         help="Optional: Path to an existing instrumental audio file. If provided, audio separation will be skipped.",
     )
     audio_group.add_argument(
+        "--existing_vocals",
+        help="Optional: Path to an existing (already separated) vocals stem. Only used with --existing_instrumental, "
+             "to draw the waveform in the lyrics review UI. Example: --existing_vocals='/path/to/vocals.flac'",
+    )
+    audio_group.add_argument(
         "--instrumental_format",
         default="flac",
         help="Optional: format / file extension for instrumental track to use for remux (default: %(default)s). Example: --instrumental_format=mp3",
@@ -227,6 +232,14 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
     lyrics_group.add_argument(
         "--lyrics_file",
         help="Optional: Path to a file containing lyrics to use instead of fetching from online. Example: --lyrics_file='/path/to/lyrics.txt'",
+    )
+    lyrics_group.add_argument(
+        "--lrc_file",
+        help="Optional: Path to a line-timed LRC file ('[mm:ss.xx] lyric line'). Uses it as the lyrics and line timing, "
+             "skipping lyrics fetching, transcription and AI correction/matching. Word-level timing is then done by hand "
+             "in the lyrics review UI (words start evenly spread across each line). Audio is assumed to be already "
+             "separated, so --existing_instrumental is required (and --existing_vocals is recommended). "
+             "Example: --lrc_file='/path/to/lyrics.lrc' --existing_instrumental='/path/to/instrumental.flac'",
     )
     lyrics_group.add_argument(
         "--subtitle_offset_ms",

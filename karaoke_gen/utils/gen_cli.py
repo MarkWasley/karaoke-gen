@@ -154,6 +154,7 @@ def run_combined_review(
     style_params_json: str,
     render_video: bool,
     logger: logging.Logger,
+    lyrics_only: bool = False,
 ) -> tuple[str | None, CorrectionResult | None]:
     """
     Run the sequential review UI (lyrics review → instrumental review).
@@ -173,6 +174,8 @@ def run_combined_review(
         style_params_json: Path to style parameters JSON for output config
         render_video: Whether video rendering is enabled (affects preview video)
         logger: Logger instance
+        lyrics_only: Run lyrics review only, and finish as soon as the lyrics are submitted (no
+            instrumental review step). Used in LRC import mode, where the instrumental is already chosen.
 
     Returns:
         Tuple of (instrumental_selection, reviewed_correction_result, is_duet)
@@ -226,6 +229,14 @@ def run_combined_review(
         vocals_source = clean_result.get("vocals")
         if vocals_source:
             candidate = _resolve_path_for_cwd(vocals_source, track_dir)
+            vocals_path = candidate if os.path.exists(candidate) else None
+
+    # A pre-separated vocals stem supplied alongside a custom instrumental (--existing_vocals)
+    if not vocals_path:
+        custom_result = separated.get("Custom", {})
+        custom_vocals = custom_result.get("vocals") if isinstance(custom_result, dict) else None
+        if custom_vocals:
+            candidate = _resolve_path_for_cwd(custom_vocals, track_dir)
             vocals_path = candidate if os.path.exists(candidate) else None
 
     with_backing_path = None
@@ -320,6 +331,7 @@ def run_combined_review(
             clean_instrumental_path=clean_instrumental_path,
             with_backing_path=with_backing_path,
             backing_vocals_path=backing_vocals_path,
+            lyrics_only=lyrics_only,
         )
         reviewed_result = review_server.start()
 
@@ -352,6 +364,53 @@ def run_combined_review(
         logger.error(f"Error during interactive review: {e}")
         return None, None, False
 
+
+
+def _str_arg(args, name):
+    """Return a string-valued CLI argument, or None if it is unset (or not a string)."""
+    value = getattr(args, name, None)
+    return value if isinstance(value, str) and value else None
+
+
+def validate_lrc_mode_args(args):
+    """Check the arguments for LRC import mode (--lrc_file). Returns a list of problems (empty if OK).
+
+    LRC import mode uses a user-supplied line-timed LRC file as the lyrics (no fetching, transcription or
+    AI matching) and assumes the audio is already separated, so an instrumental must be supplied.
+    """
+    lrc_file = _str_arg(args, "lrc_file")
+    if not lrc_file:
+        return []
+
+    problems = []
+    if not os.path.isfile(lrc_file):
+        problems.append(f"--lrc_file not found: {lrc_file}")
+
+    instrumental = _str_arg(args, "existing_instrumental")
+    if not instrumental:
+        problems.append(
+            "--lrc_file requires --existing_instrumental (audio separation is not run in LRC mode; "
+            "supply your already-separated instrumental)"
+        )
+    elif not os.path.isfile(instrumental):
+        problems.append(f"--existing_instrumental not found: {instrumental}")
+
+    vocals = _str_arg(args, "existing_vocals")
+    if vocals and not os.path.isfile(vocals):
+        problems.append(f"--existing_vocals not found: {vocals}")
+
+    for flag, attr in (
+        ("--lyrics_file", "lyrics_file"),
+        ("--skip-lyrics", "skip_lyrics"),
+        ("--skip-separation", "skip_separation"),
+        ("--lyrics-only", "lyrics_only"),
+        ("--edit-lyrics", "edit_lyrics"),
+    ):
+        value = getattr(args, attr, None)
+        if value is True or isinstance(value, str) and value:
+            problems.append(f"--lrc_file cannot be combined with {flag}")
+
+    return problems
 
 
 async def async_main():
@@ -391,6 +450,14 @@ async def async_main():
         style_overrides = process_style_overrides(args.style_override, logger)
     except ValueError:
         sys.exit(1)
+
+    # LRC import mode: fail fast on inconsistent arguments, before any heavy work starts
+    lrc_problems = validate_lrc_mode_args(args)
+    if lrc_problems:
+        for problem in lrc_problems:
+            logger.error(problem)
+        sys.exit(1)
+    lrc_mode = bool(_str_arg(args, "lrc_file"))
 
     # Handle --list-themes flag
     if args.list_themes:
@@ -822,7 +889,12 @@ async def async_main():
     # If user explicitly wants no review (either flag), we respect that.
     skip_transcription_review = args.skip_transcription_review
     skip_instrumental_review = getattr(args, 'skip_instrumental_review', False)
-    review_enabled = not skip_transcription_review and not skip_instrumental_review
+    if lrc_mode:
+        # The instrumental is supplied and fixed, so there is no instrumental review step. Only the lyrics
+        # review (where word-level timing is done by hand) can be switched off.
+        review_enabled = not skip_transcription_review
+    else:
+        review_enabled = not skip_transcription_review and not skip_instrumental_review
 
     # When review is enabled, defer video rendering until AFTER review
     # (only render in KaraokePrep if review is skipped for non-interactive mode)
@@ -847,6 +919,8 @@ async def async_main():
         other_stems_models=args.other_stems_models,
         model_file_dir=args.model_file_dir,
         existing_instrumental=args.existing_instrumental,
+        existing_vocals=_str_arg(args, "existing_vocals"),
+        lrc_file=_str_arg(args, "lrc_file"),
         skip_separation=args.skip_separation,
         lyrics_artist=args.lyrics_artist,
         lyrics_title=args.lyrics_title,
@@ -910,7 +984,11 @@ async def async_main():
         separated_audio = track.get("separated_audio", {})
         custom_instrumental = separated_audio.get("Custom", {}).get("instrumental")
 
-        if custom_instrumental:
+        # In LRC mode with review on, the instrumental is already chosen but the lyrics still need the
+        # human word-timing review, so fall through to the review branch below (lyrics-only).
+        lrc_review = lrc_mode and review_enabled
+
+        if custom_instrumental and not lrc_review:
             # Custom instrumental was provided - use it directly, no review needed
             resolved_path = _resolve_path_for_cwd(custom_instrumental, track_dir)
             if os.path.exists(resolved_path):
@@ -921,7 +999,7 @@ async def async_main():
                 logger.error("The file may have been moved or deleted after preparation.")
                 sys.exit(1)
                 return  # Explicit return for testing
-        elif skip_all_review:
+        elif skip_all_review and not lrc_review:
             # Auto-select instrumental when all review is skipped (non-interactive mode)
             logger.info("All review skipped (--skip_instrumental_review), auto-selecting instrumental file...")
             try:
@@ -969,7 +1047,15 @@ async def async_main():
                 style_params_json=args.style_params_json,
                 render_video=not args.no_video,
                 logger=logger,
+                lyrics_only=lrc_review,
             )
+
+            if lrc_review and reviewed_result is None:
+                # Don't carry on to a video-less finalise if the human timing review failed or was cancelled
+                logger.error("Lyrics review did not complete, so word-level timing was not saved. Aborting.")
+                logger.error(f"Re-run the same command to resume: your imported lyrics are kept in {corrections_json_path}")
+                sys.exit(1)
+                return  # Explicit return for testing
 
             # After review, render the video (was deferred during KaraokePrep)
             if not args.no_video and reviewed_result:
@@ -1023,7 +1109,9 @@ async def async_main():
                     render_video=True,
                     generate_cdg=False,
                     generate_plain_text=False,
-                    generate_lrc=False,
+                    # In LRC mode the pre-review LRC only has estimated word timings, and finalisation
+                    # (CDG/TXT) reads it, so regenerate it from the human-reviewed result.
+                    generate_lrc=lrc_mode,
                     video_resolution="4k",
                     is_duet=is_duet,
                 )
@@ -1052,6 +1140,12 @@ async def async_main():
                 else:
                     logger.warning("Video rendering did not produce expected output")
 
+                if lrc_mode and outputs and outputs.lrc:
+                    reviewed_lrc = f"{sanitized_artist} - {sanitized_title} (Karaoke).lrc"
+                    shutil.copy2(outputs.lrc, reviewed_lrc)
+                    track["lrc_filepath"] = reviewed_lrc
+                    logger.info(f"Updated karaoke LRC with reviewed word timings: {reviewed_lrc}")
+
             # Map instrumental selection to file path
             if instrumental_selection:
                 if instrumental_selection == "clean":
@@ -1070,6 +1164,17 @@ async def async_main():
                                 break
                 else:
                     logger.warning(f"Unknown instrumental selection: {instrumental_selection}")
+
+            # LRC mode: the (already separated) instrumental was supplied up front
+            if not selected_instrumental_file and lrc_review and custom_instrumental:
+                resolved_path = _resolve_path_for_cwd(custom_instrumental, track_dir)
+                if os.path.exists(resolved_path):
+                    logger.info(f"Using supplied instrumental (--existing_instrumental): {resolved_path}")
+                    selected_instrumental_file = resolved_path
+                else:
+                    logger.error(f"Custom instrumental file not found: {resolved_path}")
+                    sys.exit(1)
+                    return  # Explicit return for testing
 
             # If no selection made in review, fall back to auto-select
             if not selected_instrumental_file:

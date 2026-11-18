@@ -176,6 +176,34 @@ karaoke-gen \
   "Artist" "Title"
 ```
 
+### Bring Your Own Line-Timed LRC (no transcription, no AI matching)
+
+If you already have a line-timed LRC file and already-separated audio, you can skip lyrics fetching,
+transcription, and automatic correction/matching entirely. Word-level timing is then done by hand in the
+lyrics review UI.
+
+```bash
+karaoke-gen \
+  --lrc_file="./lyrics.lrc" \
+  --existing_instrumental="./instrumental.flac" \
+  --existing_vocals="./vocals.flac" \
+  "./song.flac" "Artist" "Title"
+```
+
+- `--lrc_file`: standard LRC (`[mm:ss.xx] lyric line`). Multiple timestamps per line, `[offset:]` and
+  empty timestamped lines (treated as "previous line ends here") are supported. Any word-level tags in the
+  file are ignored.
+- `--existing_instrumental` (required): your already-separated instrumental. No separation is run.
+- `--existing_vocals` (optional): your vocals stem, used only to draw the waveform in the review UI.
+- The positional audio file is what you hear while timing words (the full mix, or a vocals stem if that's all you have).
+- Line start times come from the LRC. Each line's words start evenly spread across the line, and you correct
+  them in the review UI. When you submit, the review ends and rendering continues (there is no instrumental
+  review step, because the instrumental is already chosen).
+- Re-running keeps an existing `lyrics/* (Lyrics Corrections).json`, so your timing work is never overwritten.
+  Delete that file to import the LRC again.
+- Not compatible with `--lyrics_file`, `--skip-lyrics`, `--skip-separation`, `--lyrics-only` or `--edit-lyrics`.
+- `--skip_transcription_review` skips the human review, leaving the estimated word timings as they are.
+
 ### Full Options Reference
 
 ```bash
