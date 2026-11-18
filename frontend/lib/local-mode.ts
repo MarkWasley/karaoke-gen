@@ -1,62 +1,46 @@
 /**
- * Local mode detection for karaoke-gen CLI
+ * Local mode detection for karaoke-gen CLI.
  *
- * When running the local CLI (karaoke-gen), the frontend is served from
- * a local server on localhost. This module detects local mode and provides
- * utilities for adapting the frontend behavior accordingly.
- *
- * In local mode:
- * - Authentication is skipped (no user login required)
- * - Job ID is always "local" (no real jobs in database)
- * - API calls go to localhost
+ * Local mode skips cloud authentication and uses the local review API. It is
+ * therefore enabled automatically only on loopback hosts. For a deliberate
+ * LAN/reverse-proxy access, append ?local=1 to the local review URL.
  */
 
 // Ports used by local review servers
-// Port 8000-8001 are used by local review server (8001 for side-by-side testing)
 const LOCAL_REVIEW_PORTS = ['8000', '8001', '3200', '8764', '8765', '8766', '8767', '8768', '8769', '8770']
 // Development/testing ports (Next.js dev server)
 const DEV_TESTING_PORTS = ['3000', '3001', '3002']
 const ALL_LOCAL_PORTS = [...new Set([...LOCAL_REVIEW_PORTS, ...DEV_TESTING_PORTS])]
 
 /**
- * Check if the frontend is running in local CLI mode
+ * Check if the frontend is running in local CLI mode.
  *
- * Returns true only if:
- * - Running on localhost with a known local server port
- * - NOT using hash-based routing (cloud mode uses #/{jobId}/route)
- * - URL path contains /local/ (explicit local mode indicator)
- *
- * This allows running cloud mode tests on localhost while still supporting
- * local CLI mode for the karaoke-gen CLI tool.
+ * Loopback hosts retain automatic detection. Other hostnames must explicitly
+ * opt in with ?local=1, on a known local-review port, and on the /local/ route.
+ * This avoids accidentally enabling the unauthenticated local UI on a public
+ * hostname just because it contains /local/.
  */
 export function isLocalMode(): boolean {
   if (typeof window === 'undefined') return false
 
-  const { hostname, port, hash, pathname } = window.location
+  const { hostname, port, hash, pathname, search } = window.location
 
-  // Must be on localhost
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') return false
+  // Hash-based routing belongs to cloud mode.
+  if (hash && hash.startsWith('#/')) return false
 
-  // If using hash-based routing (cloud mode pattern), it's NOT local mode
-  // Cloud mode uses: /app/jobs/#/{jobId}/review or /app/jobs/#/{jobId}/instrumental
-  // Any hash starting with #/ indicates cloud mode routing (even for invalid routes)
-  if (hash && hash.startsWith('#/')) {
-    return false
+  const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1'
+  if (isLoopback) {
+    if (pathname.includes('/local/')) return true
+    return ALL_LOCAL_PORTS.includes(port)
   }
 
-  // If pathname explicitly contains /local/, it's local mode regardless of port
-  // Local mode uses: /app/jobs/local/review or /app/jobs/local/instrumental
-  // This covers both CLI ports and E2E test dev server ports (3100-3199 range)
-  if (pathname.includes('/local/')) {
-    return true
-  }
-
-  // Must be on one of the known local server ports for implicit local mode
-  if (!ALL_LOCAL_PORTS.includes(port)) return false
-
-  // Default to local mode on localhost with known ports (backwards compatibility)
-  // This handles the case where the local CLI opens the page at /app/jobs/local/review
-  return true
+  // Explicit opt-in is required when accessing through a LAN/reverse-proxy host.
+  const params = new URLSearchParams(search)
+  return (
+    params.get('local') === '1' &&
+    ALL_LOCAL_PORTS.includes(port) &&
+    /^\/(?:[a-z]{2}\/)?app\/jobs\/local\/(?:review|instrumental|audio-edit)\/?$/.test(pathname)
+  )
 }
 
 /**
