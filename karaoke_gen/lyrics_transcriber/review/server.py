@@ -241,10 +241,32 @@ class ReviewServer:
         """
         from fastapi.responses import HTMLResponse
         frontend_dir = self._frontend_dir
-        base = os.path.join(frontend_dir, locale_prefix) if locale_prefix else frontend_dir
-        local_review_html = os.path.join(base, "app", "jobs", "local", "review", "index.html")
-        if not os.path.exists(local_review_html):
-            raise HTTPException(status_code=404, detail="Review page not found")
+        # The LRC image ships one static export, without separate per-locale
+        # directories. The frontend may prefix the URL with its detected locale
+        # (for example /en/...), so use the locale copy only when it exists and
+        # otherwise fall back to the root export.
+        local_review_html = os.path.join(frontend_dir, "app", "jobs", "local", "review", "index.html")
+        if locale_prefix:
+            localized_review_html = os.path.join(frontend_dir, locale_prefix, "app", "jobs", "local", "review", "index.html")
+            if os.path.isfile(localized_review_html):
+                local_review_html = localized_review_html
+
+        if not os.path.isfile(local_review_html):
+            # Static export fallback for layouts which use the jobs catch-all
+            # page and resolve the local/review route in the client.
+            for fallback in (
+                os.path.join(frontend_dir, "app", "jobs", "index.html"),
+                os.path.join(frontend_dir, "app", "index.html"),
+                os.path.join(frontend_dir, "index.html"),
+            ):
+                if os.path.isfile(fallback):
+                    local_review_html = fallback
+                    break
+            else:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Review page not found in packaged frontend: {frontend_dir}",
+                )
 
         with open(local_review_html, 'r', encoding='utf-8') as f:
             html_content = f.read()
@@ -289,9 +311,9 @@ class ReviewServer:
         # those too from the corresponding locale subdir in the static build.
         @self.app.get("/{locale}/app/jobs/local/review")
         async def serve_local_review_localized(locale: str):
-            if locale not in self._locales:
-                raise HTTPException(status_code=404, detail="Unknown locale")
-            return self._render_local_review_html(locale)
+            # Use a translated export when present; this image normally ships
+            # only the root export, so fall back to it for /en/... URLs.
+            return self._render_local_review_html(locale if locale in self._locales else "")
 
         # Lyrics-only review: the frontend always redirects to the instrumental review page after lyrics are
         # saved. There is nothing to review there (the instrumental is already chosen), so show a "done" page
@@ -304,8 +326,7 @@ class ReviewServer:
 
             @self.app.get("/{locale}/app/jobs/local/instrumental")
             async def serve_lyrics_only_done_localized(locale: str):
-                if locale not in self._locales:
-                    raise HTTPException(status_code=404, detail="Unknown locale")
+                # There is one local completion page for every locale.
                 return HTMLResponse(self._LYRICS_ONLY_DONE_HTML)
 
         # Job routes - serve the jobs page HTML for client-side routing
@@ -319,10 +340,9 @@ class ReviewServer:
 
         @self.app.get("/{locale}/app/jobs/{path:path}")
         async def serve_jobs_routes_localized(locale: str, path: str):
-            if locale not in self._locales:
-                raise HTTPException(status_code=404, detail="Unknown locale")
-            jobs_html = os.path.join(frontend_dir, locale, "app", "jobs", "index.html")
-            if os.path.exists(jobs_html):
+            localized_jobs_html = os.path.join(frontend_dir, locale, "app", "jobs", "index.html")
+            jobs_html = localized_jobs_html if locale in self._locales and os.path.isfile(localized_jobs_html) else os.path.join(frontend_dir, "app", "jobs", "index.html")
+            if os.path.isfile(jobs_html):
                 return FileResponse(jobs_html, media_type="text/html")
             raise HTTPException(status_code=404, detail="Jobs page not found")
 
@@ -341,25 +361,44 @@ class ReviewServer:
 
         @self.app.get("/{locale}/app/{path:path}")
         async def serve_app_routes_localized(locale: str, path: str):
-            if locale not in self._locales:
-                raise HTTPException(status_code=404, detail="Unknown locale")
-            app_html = os.path.join(frontend_dir, locale, "app", "index.html")
-            if os.path.exists(app_html):
+            localized_app_html = os.path.join(frontend_dir, locale, "app", "index.html")
+            localized_index_html = os.path.join(frontend_dir, locale, "index.html")
+            if locale in self._locales and os.path.isfile(localized_app_html):
+                return FileResponse(localized_app_html, media_type="text/html")
+            if locale in self._locales and os.path.isfile(localized_index_html):
+                return FileResponse(localized_index_html, media_type="text/html")
+            app_html = os.path.join(frontend_dir, "app", "index.html")
+            if os.path.isfile(app_html):
                 return FileResponse(app_html, media_type="text/html")
-            index_html = os.path.join(frontend_dir, locale, "index.html")
-            if os.path.exists(index_html):
+            index_html = os.path.join(frontend_dir, "index.html")
+            if os.path.isfile(index_html):
                 return FileResponse(index_html, media_type="text/html")
             raise HTTPException(status_code=404, detail="Frontend not found")
 
         # Locale root — covers `/en`, `/es`, etc.
         @self.app.get("/{locale}")
         async def serve_locale_root(locale: str):
-            if locale not in self._locales:
-                raise HTTPException(status_code=404, detail="Unknown locale")
-            index_html = os.path.join(frontend_dir, locale, "index.html")
-            if os.path.exists(index_html):
+            localized_index_html = os.path.join(frontend_dir, locale, "index.html")
+            if locale in self._locales and os.path.isfile(localized_index_html):
+                return FileResponse(localized_index_html, media_type="text/html")
+            # Locale redirect with no corresponding static export: serve the
+            # single root page. /api is reserved below and cannot enter here.
+            index_html = os.path.join(frontend_dir, "index.html")
+            if os.path.isfile(index_html):
                 return FileResponse(index_html, media_type="text/html")
             raise HTTPException(status_code=404, detail="Frontend not found")
+
+        # API root: keep /api from being interpreted as a locale route.
+        @self.app.get("/api")
+        async def serve_api_root():
+            return JSONResponse(
+                content={
+                    "service": "karaoke-gen-local-review",
+                    "status": "ok",
+                    "health": "/api/ping",
+                    "review": "/app/jobs/local/review",
+                }
+            )
 
         # Favicon
         @self.app.get("/favicon.ico")
