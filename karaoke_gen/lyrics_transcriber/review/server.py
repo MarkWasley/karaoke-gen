@@ -1418,7 +1418,8 @@ class ReviewServer:
                     break
 
             # Start server
-            config = uvicorn.Config(self.app, host="127.0.0.1", port=port, log_level="error")
+            host = os.environ.get("LYRICS_REVIEW_HOST", "127.0.0.1")
+            config = uvicorn.Config(self.app, host=host, port=port, log_level="error")
             server = uvicorn.Server(config)
             server_thread = Thread(target=server.run, daemon=True)
             server_thread.start()
@@ -1426,9 +1427,13 @@ class ReviewServer:
 
             # Open browser to the Next.js review UI
             # The frontend will automatically detect local mode and skip auth
-            browser_url = f"http://localhost:{port}/app/jobs/local/review"
-            self.logger.info(f"Opening review UI: {browser_url}")
-            webbrowser.open(browser_url)
+            public_url = os.environ.get("LYRICS_REVIEW_PUBLIC_URL", f"http://localhost:{port}")
+            browser_url = f"{public_url.rstrip('/')}/app/jobs/local/review"
+            if os.environ.get("LYRICS_REVIEW_OPEN_BROWSER", "1").lower() not in {"0", "false", "no"}:
+                self.logger.info(f"Opening review UI: {browser_url}")
+                webbrowser.open(browser_url)
+            else:
+                self.logger.info(f"Review UI is ready. Open this URL in a browser: {browser_url}")
 
             while not self.review_completed:
                 time.sleep(0.1)
