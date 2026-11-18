@@ -292,6 +292,19 @@ class ReviewServer:
         """Register SPA fallback routes for Next.js client-side routing."""
         frontend_dir = self._frontend_dir
 
+        # Register the API root before the one-segment /{locale} fallback below.
+        # Otherwise /api is mistaken for a locale name and returns "Unknown locale".
+        @self.app.get("/api")
+        async def serve_api_root():
+            return JSONResponse(
+                content={
+                    "service": "karaoke-gen-local-review",
+                    "status": "ok",
+                    "health": "/api/ping",
+                    "review": "/app/jobs/local/review",
+                }
+            )
+
         # Root route - serve index.html
         @self.app.get("/")
         async def serve_root():
@@ -387,18 +400,6 @@ class ReviewServer:
             if os.path.isfile(index_html):
                 return FileResponse(index_html, media_type="text/html")
             raise HTTPException(status_code=404, detail="Frontend not found")
-
-        # API root: keep /api from being interpreted as a locale route.
-        @self.app.get("/api")
-        async def serve_api_root():
-            return JSONResponse(
-                content={
-                    "service": "karaoke-gen-local-review",
-                    "status": "ok",
-                    "health": "/api/ping",
-                    "review": "/app/jobs/local/review",
-                }
-            )
 
         # Favicon
         @self.app.get("/favicon.ico")
