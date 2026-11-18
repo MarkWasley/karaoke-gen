@@ -1,0 +1,75 @@
+# Lightweight runtime for supplied LRC + already-separated audio + human timing review.
+# It intentionally does not install the AI transcription or audio-separation stack.
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    NLTK_DATA=/usr/share/nltk_data \
+    USE_AGENTIC_AI=0 \
+    LYRICS_REVIEW_HOST=0.0.0.0 \
+    LYRICS_REVIEW_PORT=8000 \
+    LYRICS_REVIEW_OPEN_BROWSER=0
+
+WORKDIR /app
+
+# FFmpeg is used for audio conversion and CDG/MP3 processing.
+# Noto fonts are used by the lyric and CDG renderers.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ffmpeg \
+      libsndfile1 \
+      libsox-dev \
+      sox \
+      fontconfig \
+      fonts-noto-core \
+      fonts-noto-cjk \
+      fonts-noto-extra \
+    && fc-cache -f \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-lrc.txt /tmp/requirements-lrc.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-lrc.txt \
+    && python -m spacy download en_core_web_sm \
+    && python -m nltk.downloader -d /usr/share/nltk_data cmudict
+
+# Copy only the local CLI package and its build metadata. The backend service,
+# frontend source and AI-dependent packages are intentionally left out.
+COPY karaoke_gen /app/karaoke_gen
+COPY pyproject.toml README.md LICENSE /app/
+RUN mkdir -p /app/backend && touch /app/backend/__init__.py \
+    && pip install --no-cache-dir --no-deps -e /app \
+    && python -m compileall -q /app/karaoke_gen
+
+# Fail the image build if an AI/audio-separation dependency has slipped back in,
+# or if the actual LRC, review-server and CDG imports are broken.
+RUN python - <<'PY'
+import importlib.util
+
+from karaoke_gen.utils.gen_cli import validate_lrc_mode_args
+from karaoke_gen.lyrics_transcriber.review.server import ReviewServer
+from karaoke_gen.lyrics_transcriber.output.cdg import CDGGenerator
+
+for module in (
+    "torch",
+    "audio_separator",
+    "whisper_timestamped",
+    "transformers",
+    "openai",
+    "langchain",
+    "anthropic",
+    "ollama",
+):
+    if importlib.util.find_spec(module) is not None:
+        raise SystemExit(f"AI dependency unexpectedly installed: {module}")
+
+print("LRC CLI, human review server and CDG imports OK; AI stack absent.")
+PY
+
+WORKDIR /work
+RUN mkdir -p /work
+EXPOSE 8000
+
+COPY docker/lrc-entrypoint.sh /usr/local/bin/karaoke-gen-lrc
+RUN chmod 0755 /usr/local/bin/karaoke-gen-lrc
+
+ENTRYPOINT ["/usr/local/bin/karaoke-gen-lrc"]
