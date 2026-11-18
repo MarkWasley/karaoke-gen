@@ -1,6 +1,6 @@
 services:
   karaoke-gen-lrc:
-    image: ghcr.io/markwasley/karaoke-gen-lrc:latest
+    image: ghcr.io/markwasley/karaoke-gen-lrc:${KARAOKE_IMAGE_TAG:-feature-ghcr-lrc-no-ai}
     build:
       context: .
       dockerfile: Dockerfile.lrc
