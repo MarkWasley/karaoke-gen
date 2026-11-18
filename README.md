@@ -722,7 +722,13 @@ Put these files in a `work` folder beside the compose file:
 - `instrumental.flac` — already-separated instrumental
 - `vocals.flac` — optional vocals stem for the waveform display
 
-Build locally (or use the published image):
+Pull the published image from GHCR:
+
+```powershell
+docker compose -f docker-compose.lrc.yml pull
+```
+
+To build it locally from the source instead, run:
 
 ```powershell
 docker compose -f docker-compose.lrc.yml build
@@ -760,6 +766,13 @@ The GitHub Actions workflow publishes:
 
 - Feature branch: `ghcr.io/markwasley/karaoke-gen-lrc:feature-ghcr-lrc-no-ai`
 - Default branch: `ghcr.io/markwasley/karaoke-gen-lrc:latest`
+
+The Compose file uses the feature-branch tag by default. Once the changes are merged into the default branch, you can switch Compose to the `latest` tag in PowerShell:
+
+```powershell
+$env:KARAOKE_IMAGE_TAG = "latest"
+```
+
 
 Pull it with:
 
