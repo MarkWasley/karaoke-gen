@@ -45,6 +45,8 @@ RUN mkdir -p /app/backend && touch /app/backend/__init__.py \
 RUN python - <<'PY'
 import importlib.util
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from karaoke_gen.utils.gen_cli import validate_lrc_mode_args
 from karaoke_gen.lyrics_transcriber.review.server import ReviewServer
 from karaoke_gen.lyrics_transcriber.output.cdg import CDGGenerator
@@ -56,6 +58,24 @@ if assets is None or not (assets / "index.html").is_file():
 review_page = assets / "app" / "jobs" / "local" / "review" / "index.html"
 if not review_page.is_file():
     raise SystemExit(f"The packaged local review page is missing: {review_page}")
+
+# Exercise the actual SPA routes without starting the interactive review loop.
+probe = ReviewServer.__new__(ReviewServer)
+probe._frontend_dir = str(assets)
+probe._locales = ReviewServer._discover_locales(str(assets))
+probe.lyrics_only = False
+probe.app = FastAPI()
+probe._register_spa_routes()
+client = TestClient(probe.app)
+
+api_response = client.get("/api")
+if api_response.status_code != 200 or api_response.json().get("status") != "ok":
+    raise SystemExit("The /api route is not responding correctly.")
+
+for route in ("/app/jobs/local/review", "/en/app/jobs/local/review"):
+    response = client.get(route)
+    if response.status_code != 200 or "JobRouterClient" not in response.text:
+        raise SystemExit(f"Local review route failed: {route} ({response.status_code})")
 
 for module in (
     "torch",
