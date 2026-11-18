@@ -10,6 +10,7 @@ on:
       - "requirements-lrc.txt"
       - "docker/**"
       - "docker-compose.lrc.yml"
+      - "frontend/**"
       - "karaoke_gen/**"
       - "pyproject.toml"
       - ".github/workflows/publish-lrc-image.yml"
