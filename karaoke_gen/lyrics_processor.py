@@ -4,8 +4,6 @@ import logging
 import shutil
 import json
 from typing import Optional
-from karaoke_gen.lyrics_transcriber import LyricsTranscriber, OutputConfig, TranscriberConfig, LyricsConfig
-from karaoke_gen.lyrics_transcriber.core.controller import LyricsControllerResult
 from karaoke_gen.lyrics_transcriber.lyrics import lrc_import
 from karaoke_gen.lyrics_transcriber.output.generator import OutputGenerator
 from karaoke_gen.lyrics_transcriber.types import CorrectionResult
@@ -274,6 +272,11 @@ class LyricsProcessor:
         Raises:
             ValueError: If transcription is enabled but no providers are configured
         """
+        # Keep transcription/AI provider dependencies out of LRC import mode.
+        from karaoke_gen.lyrics_transcriber import LyricsTranscriber, TranscriberConfig, LyricsConfig
+        from karaoke_gen.lyrics_transcriber.core.controller import LyricsControllerResult
+        from karaoke_gen.lyrics_transcriber.core.config import OutputConfig
+
         # Use original artist/title for filename generation
         filename_artist = artist
         filename_title = title
@@ -520,6 +523,8 @@ class LyricsProcessor:
         Raises:
             lrc_import.LrcImportError: if the file is missing, unreadable or has no lyric lines
         """
+        from karaoke_gen.lyrics_transcriber.core.config import OutputConfig
+
         if not lrc_file or not os.path.isfile(lrc_file):
             raise lrc_import.LrcImportError(f"LRC file not found: {lrc_file}")
 
