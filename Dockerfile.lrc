@@ -1,3 +1,15 @@
+# Build the frontend from the same source revision as the Python review server.
+# The checked-in karaoke_gen/nextjs_frontend bundle can lag behind frontend/ source;
+# building here prevents route logic and static page assets from getting out of sync.
+FROM node:22-bookworm-slim AS frontend-build
+WORKDIR /src
+COPY pyproject.toml /src/pyproject.toml
+COPY frontend/package.json frontend/package-lock.json ./frontend/
+WORKDIR /src/frontend
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build
+
 # Lightweight runtime for supplied LRC + already-separated audio + human timing review.
 # It intentionally does not install the AI transcription or audio-separation stack.
 FROM python:3.12-slim-bookworm
@@ -32,16 +44,17 @@ RUN pip install --no-cache-dir -r /tmp/requirements-lrc.txt \
     && python -m spacy download en_core_web_sm \
     && python -m nltk.downloader -d /usr/share/nltk_data cmudict
 
-# Copy only the local CLI package and its build metadata. The backend service,
-# frontend source and AI-dependent packages are intentionally left out.
+# Copy the CLI package, then replace its possibly stale checked-in static frontend
+# with the build produced from frontend/ above.
 COPY karaoke_gen /app/karaoke_gen
+COPY --from=frontend-build /src/frontend/out /app/karaoke_gen/nextjs_frontend/out
 COPY pyproject.toml README.md LICENSE /app/
 RUN mkdir -p /app/backend && touch /app/backend/__init__.py \
     && pip install --no-cache-dir --no-deps -e /app \
     && python -m compileall -q /app/karaoke_gen
 
 # Fail the image build if an AI/audio-separation dependency has slipped back in,
-# or if the actual LRC, review-server and CDG imports are broken.
+# or if the actual LRC, review-server, frontend routes and CDG imports are broken.
 RUN python - <<'PY'
 import importlib.util
 
@@ -54,8 +67,11 @@ from karaoke_gen.nextjs_frontend import get_nextjs_assets_dir
 
 assets = get_nextjs_assets_dir()
 if assets is None or not (assets / "index.html").is_file():
-    raise SystemExit("The packaged local review frontend is missing.")
-review_page = assets / "app" / "jobs" / "local" / "review" / "index.html"
+    raise SystemExit("The freshly built local review frontend is missing.")
+
+review_page = assets / "en" / "app" / "jobs" / "local" / "review" / "index.html"
+if not review_page.is_file():
+    review_page = assets / "app" / "jobs" / "local" / "review" / "index.html"
 if not review_page.is_file():
     raise SystemExit(f"The packaged local review page is missing: {review_page}")
 
@@ -77,6 +93,15 @@ for route in ("/app/jobs/local/review", "/en/app/jobs/local/review"):
     if response.status_code != 200 or "JobRouterClient" not in response.text:
         raise SystemExit(f"Local review route failed: {route} ({response.status_code})")
 
+# Check that the browser bundle includes the updated Docker local port and the
+# locale-aware route parser, rather than silently shipping the previous build.
+chunks_dir = assets / "_next" / "static" / "chunks"
+js_bundle = "\n".join(p.read_text(encoding="utf-8") for p in chunks_dir.glob("*.js"))
+if '"3200"' not in js_bundle and "'3200'" not in js_bundle:
+    raise SystemExit("The built frontend does not include local review port 3200.")
+if "Page not found" not in js_bundle:
+    raise SystemExit("The frontend JobRouterClient bundle is missing.")
+
 for module in (
     "torch",
     "audio_separator",
@@ -90,7 +115,7 @@ for module in (
     if importlib.util.find_spec(module) is not None:
         raise SystemExit(f"AI dependency unexpectedly installed: {module}")
 
-print("LRC CLI, human review server and CDG imports OK; AI stack absent.")
+print("Fresh frontend routes, LRC CLI, human review server and CDG imports OK; AI stack absent.")
 PY
 
 WORKDIR /work
