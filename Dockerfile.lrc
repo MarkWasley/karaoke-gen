@@ -8,6 +8,8 @@ COPY frontend/package.json frontend/package-lock.json ./frontend/
 WORKDIR /src/frontend
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
+# Regression tests for the locale-prefixed route and non-standard Docker host ports.
+RUN npx jest lib/__tests__/job-router-routes.test.ts lib/__tests__/local-mode.test.ts --runInBand
 RUN npm run build
 
 # Lightweight runtime for supplied LRC + already-separated audio + human timing review.
