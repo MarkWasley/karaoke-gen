@@ -246,8 +246,12 @@ class ReviewServer:
         # (for example /en/...), so use the locale copy only when it exists and
         # otherwise fall back to the root export.
         local_review_html = os.path.join(frontend_dir, "app", "jobs", "local", "review", "index.html")
-        if locale_prefix:
-            localized_review_html = os.path.join(frontend_dir, locale_prefix, "app", "jobs", "local", "review", "index.html")
+        # The non-locale Next.js route is only a LocaleRedirect shell. For the
+        # default URL, prefer the actual default-locale page when the static
+        # export uses locale-prefixed routes, so direct requests reach the UI.
+        selected_locale = locale_prefix or ("en" if "en" in self._locales else "")
+        if selected_locale:
+            localized_review_html = os.path.join(frontend_dir, selected_locale, "app", "jobs", "local", "review", "index.html")
             if os.path.isfile(localized_review_html):
                 local_review_html = localized_review_html
 
