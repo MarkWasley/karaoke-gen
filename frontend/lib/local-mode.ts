@@ -13,7 +13,7 @@
 
 // Ports used by local review servers
 // Port 8000-8001 are used by local review server (8001 for side-by-side testing)
-const LOCAL_REVIEW_PORTS = ['8000', '8001', '8764', '8765', '8766', '8767', '8768', '8769', '8770']
+const LOCAL_REVIEW_PORTS = ['8000', '8001', '3200', '8764', '8765', '8766', '8767', '8768', '8769', '8770']
 // Development/testing ports (Next.js dev server)
 const DEV_TESTING_PORTS = ['3000', '3001', '3002']
 const ALL_LOCAL_PORTS = [...new Set([...LOCAL_REVIEW_PORTS, ...DEV_TESTING_PORTS])]
