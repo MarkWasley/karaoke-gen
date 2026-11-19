@@ -1,6 +1,0 @@
-name: nomad-cloudflare
-runtime:
-  name: python
-  options:
-    virtualenv: venv
-description: Nomad Karaoke Cloudflare account (zones, DNS, rules, email, tunnels, Access, Pages/Workers domains). See README.md.
