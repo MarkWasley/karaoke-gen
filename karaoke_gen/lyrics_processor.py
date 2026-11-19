@@ -16,11 +16,12 @@ class LyricsProcessor:
     COUNTDOWN_PADDING_SECONDS = 3.0
     
     def __init__(
-        self, logger, style_params_json, lyrics_file, skip_transcription, skip_transcription_review, render_video, subtitle_offset_ms
+        self, logger, style_params_json, lyrics_file, skip_transcription, skip_transcription_review, render_video, subtitle_offset_ms, lrc_file=None
     ):
         self.logger = logger
         self.style_params_json = style_params_json
         self.lyrics_file = lyrics_file
+        self.lrc_file = lrc_file
         self.skip_transcription = skip_transcription
         self.skip_transcription_review = skip_transcription_review
         self.render_video = render_video
@@ -295,7 +296,7 @@ class LyricsProcessor:
         lyrics_lrc_path = os.path.join(lyrics_dir, f"{sanitized_artist} - {sanitized_title} (Karaoke).lrc")
 
         # If files exist in parent directory, return early (but detect countdown padding first)
-        if os.path.exists(parent_video_path) and os.path.exists(parent_lrc_path):
+        if not self.lrc_file and os.path.exists(parent_video_path) and os.path.exists(parent_lrc_path):
             self.logger.info("Found existing video and LRC files in parent directory, skipping transcription")
             
             # Detect countdown padding from existing LRC file
@@ -313,7 +314,7 @@ class LyricsProcessor:
             }
 
         # If files exist in lyrics directory, copy to parent and return (but detect countdown padding first)
-        if os.path.exists(lyrics_video_path) and os.path.exists(lyrics_lrc_path):
+        if not self.lrc_file and os.path.exists(lyrics_video_path) and os.path.exists(lyrics_lrc_path):
             self.logger.info("Found existing video and LRC files in lyrics directory, copying to parent")
             os.makedirs(track_output_dir, exist_ok=True)
             shutil.copy2(lyrics_video_path, parent_video_path)
@@ -335,7 +336,7 @@ class LyricsProcessor:
 
         # Check transcription provider configuration if transcription is not being skipped
         # Do this AFTER checking for existing files, since existing files don't need transcription
-        if not self.skip_transcription:
+        if not self.skip_transcription and not self.lrc_file:
             provider_status = self._check_transcription_providers()
             
             if provider_status["configured"]:
@@ -409,14 +410,14 @@ class LyricsProcessor:
             output_dir=lyrics_dir,
             render_video=False,  # Always defer - caller handles video rendering after countdown
             allow_preview_video=self.render_video,  # Allow preview videos unless --no-video is set
-            fetch_lyrics=True,
-            run_transcription=not self.skip_transcription,
-            run_correction=not skip_correction,  # Disabled when SKIP_CORRECTION=true
+            fetch_lyrics=not bool(self.lrc_file),
+            run_transcription=not self.skip_transcription and not bool(self.lrc_file),
+            run_correction=not skip_correction and not bool(self.lrc_file),  # Disabled when SKIP_CORRECTION=true
             generate_plain_text=True,
             generate_lrc=True,
             generate_cdg=False,  # CDG generation disabled (not currently supported)
             video_resolution="4k",
-            enable_review=not self.skip_transcription_review,  # Honor the caller's setting
+            enable_review=(not self.skip_transcription_review or bool(self.lrc_file)),  # LRC imports require Human Review for word timing
             subtitle_offset_ms=self.subtitle_offset_ms,
             add_countdown=False,  # Always defer - caller handles countdown after review
         )
@@ -433,6 +434,7 @@ class LyricsProcessor:
             lyrics_config=lyrics_config,
             output_config=output_config,
             logger=self.logger,
+            lrc_file=self.lrc_file,
         )
 
         # Process and get results (pass deadline for agentic timeout)

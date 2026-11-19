@@ -1,22 +1,15 @@
+from __future__ import annotations
+
 import os
 import logging
 import json
 from dataclasses import dataclass, field
-from typing import Dict, Optional, List
-from karaoke_gen.lyrics_transcriber.types import LyricsData, TranscriptionResult, CorrectionResult
+from typing import Any, Dict, Optional, List
+from karaoke_gen.lyrics_transcriber.types import LyricsData, TranscriptionResult, TranscriptionData, CorrectionResult
+from karaoke_gen.lyrics_transcriber.lrc_import import load_lrc_segments
 from karaoke_gen.lyrics_transcriber.transcribers.base_transcriber import BaseTranscriber
-from karaoke_gen.lyrics_transcriber.transcribers.audioshake import AudioShakeTranscriber, AudioShakeConfig
-from karaoke_gen.lyrics_transcriber.transcribers.whisper import WhisperTranscriber, WhisperConfig
-from karaoke_gen.lyrics_transcriber.transcribers.local_whisper import LocalWhisperTranscriber, LocalWhisperConfig
-from karaoke_gen.lyrics_transcriber.lyrics.base_lyrics_provider import BaseLyricsProvider, LyricsProviderConfig
-from karaoke_gen.lyrics_transcriber.lyrics.genius import GeniusProvider
-from karaoke_gen.lyrics_transcriber.lyrics.spotify import SpotifyProvider
-from karaoke_gen.lyrics_transcriber.lyrics.musixmatch import MusixmatchProvider
-from karaoke_gen.lyrics_transcriber.lyrics.lrclib import LRCLIBProvider
 from karaoke_gen.lyrics_transcriber.output.generator import OutputGenerator
-from karaoke_gen.lyrics_transcriber.correction.corrector import LyricsCorrector
 from karaoke_gen.lyrics_transcriber.core.config import TranscriberConfig, LyricsConfig, OutputConfig
-from karaoke_gen.lyrics_transcriber.lyrics.file_provider import FileProvider
 
 
 @dataclass
@@ -68,10 +61,11 @@ class LyricsTranscriber:
         lyrics_config: Optional[LyricsConfig] = None,
         output_config: Optional[OutputConfig] = None,
         transcribers: Optional[Dict[str, BaseTranscriber]] = None,
-        lyrics_providers: Optional[Dict[str, BaseLyricsProvider]] = None,
+        lyrics_providers: Optional[Dict[str, Any]] = None,
         corrector: Optional[LyricsCorrector] = None,
         output_generator: Optional[OutputGenerator] = None,
         logger: Optional[logging.Logger] = None,
+        lrc_file: Optional[str] = None,
         log_level: int = logging.DEBUG,
         log_formatter: Optional[logging.Formatter] = None,
     ):
@@ -104,6 +98,7 @@ class LyricsTranscriber:
 
         # Basic settings with sanitized filenames
         self.audio_filepath = audio_filepath
+        self.lrc_file = lrc_file
         self.artist = artist
         self.title = title
         self.output_prefix = self._create_sanitized_output_prefix(artist, title)
@@ -122,10 +117,18 @@ class LyricsTranscriber:
         # Load styles early so lyrics providers can use them
         self._load_styles()
 
-        # Initialize components (with dependency injection)
-        self.transcribers = transcribers or self._initialize_transcribers()
-        self.lyrics_providers = lyrics_providers or self._initialize_lyrics_providers()
-        self.corrector = corrector or LyricsCorrector(cache_dir=self.output_config.cache_dir, logger=self.logger)
+        # LRC imports do not use transcription, online providers or automatic
+        # correction. Avoid initializing those components (including optional ML
+        # dependencies such as spaCy) for this workflow.
+        if self.lrc_file:
+            self.transcribers = {}
+            self.lyrics_providers = {}
+            self.corrector = None
+        else:
+            self.transcribers = transcribers or self._initialize_transcribers()
+            self.lyrics_providers = lyrics_providers or self._initialize_lyrics_providers()
+            from karaoke_gen.lyrics_transcriber.correction.corrector import LyricsCorrector
+            self.corrector = corrector or LyricsCorrector(cache_dir=self.output_config.cache_dir, logger=self.logger)
         self.output_generator = output_generator or self._initialize_output_generator()
 
         # Log enabled features
@@ -176,6 +179,10 @@ class LyricsTranscriber:
 
     def _initialize_transcribers(self) -> Dict[str, BaseTranscriber]:
         """Initialize available transcription services."""
+        from karaoke_gen.lyrics_transcriber.transcribers.audioshake import AudioShakeTranscriber, AudioShakeConfig
+        from karaoke_gen.lyrics_transcriber.transcribers.whisper import WhisperTranscriber, WhisperConfig
+        from karaoke_gen.lyrics_transcriber.transcribers.local_whisper import LocalWhisperTranscriber, LocalWhisperConfig
+
         transcribers = {}
 
         # Add debug logging for config values
@@ -242,6 +249,13 @@ class LyricsTranscriber:
 
     def _initialize_lyrics_providers(self) -> Dict[str, BaseLyricsProvider]:
         """Initialize available lyrics providers."""
+        from karaoke_gen.lyrics_transcriber.lyrics.base_lyrics_provider import LyricsProviderConfig
+        from karaoke_gen.lyrics_transcriber.lyrics.genius import GeniusProvider
+        from karaoke_gen.lyrics_transcriber.lyrics.spotify import SpotifyProvider
+        from karaoke_gen.lyrics_transcriber.lyrics.musixmatch import MusixmatchProvider
+        from karaoke_gen.lyrics_transcriber.lyrics.lrclib import LRCLIBProvider
+        from karaoke_gen.lyrics_transcriber.lyrics.file_provider import FileProvider
+
         providers = {}
 
         # Get max_line_length from styles if available, otherwise use config default
@@ -295,7 +309,7 @@ class LyricsTranscriber:
     def process(
         self,
         agentic_deadline: Optional[float] = None,
-        separated_audio_paths: Optional[Dict[str, any]] = None,
+        separated_audio_paths: Optional[Dict[str, Any]] = None,
     ) -> LyricsControllerResult:
         """Main processing method that orchestrates the entire workflow.
 
@@ -343,6 +357,47 @@ class LyricsTranscriber:
         # Log all env vars if in debug mode
         if self.logger.getEffectiveLevel() <= logging.DEBUG:
             self.logger.debug(f"All environment variables: {env_vars}")
+
+        # An explicitly supplied LRC is authoritative: bypass correction caches,
+        # online lyric providers and all automatic transcription/correction.
+        if self.lrc_file:
+            self.logger.info(f"Importing line-timed lyrics from {self.lrc_file}")
+            segments = load_lrc_segments(self.lrc_file)
+            transcription = TranscriptionData(
+                segments=segments,
+                words=[word for segment in segments for word in segment.words],
+                text="\n".join(segment.text for segment in segments),
+                source="lrc_import",
+                metadata={"source_file": os.path.abspath(self.lrc_file), "timing_level": "line"},
+            )
+            self.results.transcription_results = [
+                TranscriptionResult(name="lrc_import", priority=0, result=transcription)
+            ]
+            self.results.transcription_corrected = CorrectionResult(
+                original_segments=segments,
+                corrected_segments=segments,
+                corrections=[],
+                corrections_made=0,
+                confidence=1.0,
+                reference_lyrics={},
+                anchor_sequences=[],
+                gap_sequences=[],
+                resized_segments=[],
+                metadata={
+                    "correction_type": "none",
+                    "reason": "lrc_import",
+                    "source_file": os.path.abspath(self.lrc_file),
+                    "timing_level": "line",
+                },
+                correction_steps=[],
+                word_id_map={},
+                segment_id_map={},
+            )
+            if self.output_config.enable_review:
+                self._run_review()
+            self.generate_outputs()
+            self.logger.info("LRC import and Human Review completed")
+            return self.results
 
         # Check for existing corrections JSON
         corrections_json_path = os.path.join(self.output_config.output_dir, f"{self.output_prefix} (Lyrics Corrections).json")

@@ -33,6 +33,8 @@ export interface LyricsSegment {
   words: Word[]
   start_time: number | null
   end_time: number | null
+  /** Original line timestamp imported from LRC; never changed by timing edits. */
+  source_timestamp?: number
   singer?: SingerId
 }
 
